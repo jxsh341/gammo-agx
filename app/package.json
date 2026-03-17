@@ -1,0 +1,14 @@
+{
+  "name": "gammo-agx",
+  "version": "0.1.0",
+  "description": "Autonomous Hybrid Research Engine for Exotic Spacetime Physics",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.0"
+  }
+}

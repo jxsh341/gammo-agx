@@ -1,0 +1,16 @@
+"""
+Gammo AGX — API Server Runner
+Run with: python scripts/run_api.py
+"""
+
+import uvicorn
+from config.settings import settings
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "api.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=True,
+        log_level=settings.log_level.lower(),
+    )
