@@ -36,7 +36,7 @@ It operates in two simultaneous modes:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/gammo-agx.git
+git clone https://github.com/jxsh341/gammo-agx.git
 cd gammo-agx
 
 # 2. Create virtual environment
