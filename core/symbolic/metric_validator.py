@@ -139,6 +139,16 @@ def validate_morris_thorne(
             reason=f"Energy density magnitude {nec_magnitude:.2e} exceeds Planck threshold",
             details={"energy_magnitude": nec_magnitude}
         )
+     
+    # Check 5b: Ford-Roman quantum inequality
+    from core.quantum.ford_roman import filter_by_ford_roman
+    fr_passes, fr_reason = filter_by_ford_roman(b0_val, exotic_density, tidal_force)
+    if not fr_passes:
+        return ValidationResult(
+            valid=False,
+            reason=f"Ford-Roman quantum inequality: {fr_reason}",
+            details={"ford_roman_reason": fr_reason}
+        )
 
     # Check 6: Tidal force constraint
     # Maximum proper acceleration at throat should be sub-Planck
