@@ -1,1 +1,0 @@
-"""Gammo AGX — generator.py"""
