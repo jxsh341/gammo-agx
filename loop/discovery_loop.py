@@ -169,23 +169,39 @@ class DiscoveryLoop:
         }
 
     async def _step_uncertainty(self, scored: dict) -> dict:
-        """Step 5: Evidential uncertainty model scores the result."""
-        confidence = round(random.uniform(0.3, 0.95), 3)
-        throat = scored.get("parameters", {}).get("throat_radius", "?")
-        ford = scored.get("ford_roman_status", "unknown")
-        stability = scored.get("stability_score", 0.0)
-        return {
-            **scored,
-            "hypothesis": (
-                f"Configuration with throat_radius={throat} yields "
-                f"stability={stability:.3f} and ford_roman={ford}. "
-                f"Casimir gap requires further reduction for viability."
-            ),
-            "hypothesis_confidence": confidence,
-            "uncertainty_type": "epistemic" if confidence < 0.6 else "aleatoric",
-            "novelty_flag": random.random() > 0.92,
-            "novelty_score": round(random.uniform(0, 1), 3),
-        }
+        """Step 5: AI hypothesis engine scores the result."""
+        try:
+            from ai.models.gemma_runner import generate_hypothesis
+            result = generate_hypothesis(scored)
+            return {
+                **scored,
+                "hypothesis":            result.get("hypothesis", ""),
+                "hypothesis_confidence": result.get("hypothesis_confidence", 0.4),
+                "uncertainty_type":      result.get("uncertainty_type", "epistemic"),
+                "novelty_flag":          result.get("hypothesis_confidence", 0) > 0.75,
+                "novelty_score":         result.get("hypothesis_confidence", 0),
+                "model_used":            result.get("model_used", "gemma3"),
+            }
+        except Exception as e:
+            logger.warning(f"AI hypothesis failed, using fallback: {e}")
+            import random
+            confidence = round(random.uniform(0.3, 0.95), 3)
+            throat = scored.get("parameters", {}).get("throat_radius", "?")
+            ford = scored.get("ford_roman_status", "unknown")
+            stability = scored.get("stability_score", 0.0)
+            return {
+                **scored,
+                "hypothesis": (
+                    f"Configuration with throat_radius={throat} yields "
+                    f"stability={stability:.3f} and ford_roman={ford}. "
+                    f"Casimir gap requires further reduction for viability."
+                ),
+                "hypothesis_confidence": confidence,
+                "uncertainty_type":      "epistemic" if confidence < 0.6 else "aleatoric",
+                "novelty_flag":          random.random() > 0.92,
+                "novelty_score":         round(random.uniform(0, 1), 3),
+                "model_used":            "fallback",
+            }
 
     async def _step_store(self, record: dict) -> None:
         """Step 6: Write experiment to Supabase knowledge store."""
