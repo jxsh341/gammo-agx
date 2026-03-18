@@ -1,6 +1,6 @@
 """
-Gammo AGX — Natural Language Query Routes
-Human query interface for the knowledge store.
+Gammo AGX - Query Routes
+Natural language and structured queries over the knowledge store.
 """
 
 from fastapi import APIRouter
@@ -25,24 +25,9 @@ class StructuredQuery(BaseModel):
 
 @router.post("/natural")
 async def natural_language_query(request: NaturalLanguageQuery):
-    """
-    Parse and execute a natural language query against the knowledge store.
-    Example: 'find stable wormholes where Ford-Roman is satisfied'
-    """
-    # TODO: Wire to AI query parser
-    # For now, extract key terms and run structured query
-    q = request.query.lower()
-    params = {}
-    if "wormhole" in q or "morris" in q:
-        params["geometry_type"] = "morris_thorne"
-    if "stable" in q or "stability" in q:
-        params["min_stability"] = 0.6
-    if "ford" in q or "roman" in q or "satisfied" in q:
-        params["ford_roman_status"] = "satisfied"
-    if "novel" in q or "discovery" in q:
-        params["novelty_only"] = True
-
-    results = query_simulations(**params, limit=request.limit)
+    """Parse and execute a natural language query against the knowledge store."""
+    from store.search import search_by_natural_language
+    results = search_by_natural_language(request.query, request.limit)
     return {"query": request.query, "results": results, "count": len(results)}
 
 
@@ -63,9 +48,45 @@ async def structured_query(request: StructuredQuery):
 async def get_stats():
     """Get knowledge store statistics."""
     return {
-        "total_records": get_record_count(),
-        "morris_thorne": get_record_count("morris_thorne"),
-        "alcubierre": get_record_count("alcubierre"),
-        "krasnikov": get_record_count("krasnikov"),
+        "total_records":    get_record_count(),
+        "morris_thorne":    get_record_count("morris_thorne"),
+        "alcubierre":       get_record_count("alcubierre"),
+        "krasnikov":        get_record_count("krasnikov"),
         "novel_discoveries": len(get_novel_discoveries(limit=1000)),
     }
+
+
+@router.post("/similar")
+async def find_similar(
+    throat_radius:  float = 1.0,
+    exotic_density: float = 0.5,
+    tidal_force:    float = 0.3,
+    min_stability:  float = 0.0,
+    limit:          int   = 10,
+):
+    """Find simulations similar to a given parameter configuration."""
+    from store.search import search_by_params
+    results = search_by_params(
+        throat_radius  = throat_radius,
+        exotic_density = exotic_density,
+        tidal_force    = tidal_force,
+        match_count    = limit,
+        min_stability  = min_stability,
+    )
+    return {"results": results, "count": len(results)}
+
+
+@router.get("/stable")
+async def get_most_stable(limit: int = 10):
+    """Get the most stable configurations in the knowledge store."""
+    from store.search import find_most_stable
+    results = find_most_stable(limit=limit)
+    return {"results": results, "count": len(results)}
+
+
+@router.get("/ford-roman")
+async def get_ford_roman_satisfied(limit: int = 10):
+    """Get configurations where Ford-Roman bounds are satisfied."""
+    from store.search import find_ford_roman_satisfied
+    results = find_ford_roman_satisfied(limit=limit)
+    return {"results": results, "count": len(results)}
