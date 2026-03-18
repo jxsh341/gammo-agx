@@ -136,15 +136,24 @@ class DiscoveryLoop:
 
     async def _step_evaluate(self, result: dict) -> dict:
         """Step 4: Extract constraint scores from simulation result."""
+        from core.quantum.casimir import compute_energy_gap
+
         metrics = result.get("simulation_result", {}).get("metrics", {})
+        energy_req = metrics.get("energy_requirement", 0.0)
+
+        # Real Casimir gap calculation
+        casimir_gap = compute_energy_gap(
+            wormhole_energy_requirement=energy_req if energy_req != 0 else -1e-2
+        )
+
         return {
             **result,
             "stability_score":     metrics.get("stability_score", 0.0),
             "ford_roman_status":   metrics.get("ford_roman_status", "unknown"),
             "null_energy_violated":metrics.get("null_energy_violated", True),
             "constraint_error":    metrics.get("constraint_error", 1.0),
-            "energy_requirement":  metrics.get("energy_requirement", 0.0),
-            "casimir_gap_oom":     metrics.get("casimir_gap_oom", 47.0),
+            "energy_requirement":  energy_req,
+            "casimir_gap_oom":     casimir_gap.get("gap_orders_of_magnitude", 47.0),
             "geometry_class":      metrics.get("geometry_class", "STANDARD"),
             "bssn_stable":         metrics.get("bssn_stable", True),
             "traversal_time":      metrics.get("traversal_time", 0.0),
