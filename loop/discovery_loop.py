@@ -123,6 +123,7 @@ class DiscoveryLoop:
     async def _step_simulate(self, config: dict) -> dict:
         """Step 3: JAX physics engine simulates the geometry."""
         from core.simulator.morris_thorne import MorrisThorneParams, solve
+        from core.descriptors.extractor import extract, descriptor_to_list
 
         p = config.get("parameters", {})
         params = MorrisThorneParams(
@@ -132,8 +133,16 @@ class DiscoveryLoop:
             redshift_factor = p.get("redshift_factor", 0.2),
         )
         result = solve(params)
-        return {**config, "simulation_result": result}
 
+        # Extract descriptor vector
+        descriptor = extract("morris_thorne", result, p)
+        descriptor_list = descriptor_to_list(descriptor) if descriptor else None
+
+        return {
+            **config,
+            "simulation_result": result,
+            "descriptor_vector": descriptor_list,
+        }
     async def _step_evaluate(self, result: dict) -> dict:
         """Step 4: Extract constraint scores from simulation result."""
         from core.quantum.casimir import compute_energy_gap
@@ -200,6 +209,7 @@ class DiscoveryLoop:
             "novelty_flag":          record.get("novelty_flag", False),
             "novelty_score":         record.get("novelty_score"),
             "loop_iteration":        self.state.iteration,
+            "descriptor_vector": record.get("descriptor_vector"),
             "model_used":            "gemma3",
         }
 
