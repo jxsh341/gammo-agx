@@ -241,8 +241,53 @@ class DiscoveryLoop:
             logger.warning("Failed to write to Supabase - check credentials in .env")
 
     async def _step_hypothesize(self, record: dict) -> None:
-        """Step 7: AI generates next hypothesis based on accumulated results."""
+        """Step 7: Multi-pass reasoning for novel or high-confidence discoveries."""
         self.state.last_hypothesis = record.get("hypothesis", "")
+
+        should_deep_reason = (
+            record.get("novelty_flag", False) or
+            record.get("hypothesis_confidence", 0) > 0.80 or
+            (record.get("ford_roman_status") == "satisfied" and
+            record.get("stability_score", 0) > 0.7)
+        )
+
+        if should_deep_reason:
+            try:
+                from ai.reasoning_pipeline import run_reasoning_pipeline
+                from store.supabase_client import get_client
+
+                logger.info(
+                    f"Multi-pass reasoning pipeline triggered — "
+                    f"stability={record.get('stability_score',0):.3f}"
+                )
+
+                deep = run_reasoning_pipeline(record)
+
+                client = get_client()
+                client.table("simulations")\
+                    .update({
+                        "hypothesis":            deep.get("hypothesis", ""),
+                        "hypothesis_confidence": deep.get("hypothesis_confidence", 0.5),
+                        "novelty_score":         deep.get("novelty_score", 0.0),
+                        "uncertainty_type":      deep.get("uncertainty_type", "epistemic"),
+                        "model_used":            deep.get("model_used", "gemma3_multipass"),
+                    })\
+                    .eq("loop_iteration", self.state.iteration)\
+                    .eq("geometry_type", record.get("geometry_type", "morris_thorne"))\
+                    .execute()
+
+                self.state.last_hypothesis = deep.get("hypothesis", "")
+
+                if deep.get("pipeline_complete"):
+                    logger.success(
+                        f"Multi-pass pipeline complete — "
+                        f"confidence={deep.get('hypothesis_confidence',0):.3f}, "
+                        f"novelty={deep.get('novelty_score',0):.3f}, "
+                        f"steps={len(deep.get('reasoning_trace', []))}"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Multi-pass pipeline failed: {e}")
 
     def stop(self):
         """Signal the loop to stop after the current cycle."""
