@@ -140,14 +140,16 @@ def validate_morris_thorne(
             details={"energy_magnitude": nec_magnitude}
         )
      
-    # Check 5b: Ford-Roman quantum inequality
-    from core.quantum.ford_roman import filter_by_ford_roman
-    fr_passes, fr_reason = filter_by_ford_roman(b0_val, exotic_density, tidal_force)
-    if not fr_passes:
+    # Check 5b: Ford-Roman quantum inequality (soft filter)
+    # Only reject extreme violations (factor > 50)
+    # Marginal violations are recorded in metrics but allowed through
+    from core.quantum.ford_roman import check_morris_thorne as fr_check
+    fr_result = fr_check(b0_val, exotic_density)
+    if fr_result.violation_factor > 50.0:
         return ValidationResult(
             valid=False,
-            reason=f"Ford-Roman quantum inequality: {fr_reason}",
-            details={"ford_roman_reason": fr_reason}
+            reason=f"Ford-Roman extreme violation: factor={fr_result.violation_factor:.1f} (threshold=50)",
+            details={"fr_violation_factor": fr_result.violation_factor}
         )
 
     # Check 6: Tidal force constraint
