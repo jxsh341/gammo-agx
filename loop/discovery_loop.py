@@ -101,8 +101,23 @@ class DiscoveryLoop:
 
     async def _step_generate(self) -> dict:
         """Step 1: Generate a candidate spacetime configuration."""
+        import random
+        # 70% Morris-Thorne, 30% Alcubierre
+        geo = "alcubierre" if random.random() < 0.3 else "morris_thorne"
+        self.state.current_geometry = geo
+
+        if geo == "alcubierre":
+            return {
+                "geometry_type": "alcubierre",
+                "parameters": {
+                    "warp_speed":     round(random.uniform(0.1, 5.0), 3),
+                    "bubble_radius":  round(random.uniform(0.5, 3.0), 3),
+                    "wall_thickness": round(random.uniform(0.1, 1.0), 3),
+                    "energy_density": round(random.uniform(0.01, 1.0), 3),
+                }
+            }
         return {
-            "geometry_type": self.state.current_geometry,
+            "geometry_type": "morris_thorne",
             "parameters": {
                 "throat_radius":   round(random.uniform(0.3, 3.0), 3),
                 "exotic_density":  round(random.uniform(0.01, 1.0), 3),
@@ -113,29 +128,52 @@ class DiscoveryLoop:
 
     async def _step_validate_symbolic(self, config: dict) -> bool:
         """Step 2: SymPy validates the configuration analytically."""
-        from core.symbolic.metric_validator import filter_configuration
+        geo = config.get("geometry_type", "morris_thorne")
 
-        should_simulate, reason = filter_configuration(config)
-        if not should_simulate:
-            logger.debug(f"Symbolic filter rejected: {reason}")
-        return should_simulate
+        if geo == "morris_thorne":
+            from core.symbolic.metric_validator import filter_configuration
+            should_simulate, reason = filter_configuration(config)
+            if not should_simulate:
+                logger.debug(f"Symbolic filter rejected: {reason}")
+            return should_simulate
+
+        # Alcubierre — basic parameter validation only
+        if geo == "alcubierre":
+            p = config.get("parameters", {})
+            if p.get("warp_speed", 1.0) > 10.0:
+                logger.debug("Alcubierre: warp speed too extreme (>10c)")
+                return False
+            if p.get("bubble_radius", 1.0) <= 0:
+                return False
+        return True
 
     async def _step_simulate(self, config: dict) -> dict:
         """Step 3: JAX physics engine simulates the geometry."""
-        from core.simulator.morris_thorne import MorrisThorneParams, solve
-        from core.descriptors.extractor import extract, descriptor_to_list
+        geo = config.get("geometry_type", "morris_thorne")
 
-        p = config.get("parameters", {})
-        params = MorrisThorneParams(
-            throat_radius   = p.get("throat_radius",   1.0),
-            exotic_density  = p.get("exotic_density",  0.5),
-            tidal_force     = p.get("tidal_force",     0.3),
-            redshift_factor = p.get("redshift_factor", 0.2),
-        )
+        if geo == "alcubierre":
+            from core.simulator.alcubierre import AlcubierreParams, solve
+            p = config.get("parameters", {})
+            params = AlcubierreParams(
+                warp_speed     = p.get("warp_speed",     1.0),
+                bubble_radius  = p.get("bubble_radius",  1.0),
+                wall_thickness = p.get("wall_thickness", 0.5),
+                energy_density = p.get("energy_density", 0.5),
+            )
+        else:
+            from core.simulator.morris_thorne import MorrisThorneParams, solve
+            p = config.get("parameters", {})
+            params = MorrisThorneParams(
+                throat_radius   = p.get("throat_radius",   1.0),
+                exotic_density  = p.get("exotic_density",  0.5),
+                tidal_force     = p.get("tidal_force",     0.3),
+                redshift_factor = p.get("redshift_factor", 0.2),
+            )
+
         result = solve(params)
 
-        # Extract descriptor vector
-        descriptor = extract("morris_thorne", result, p)
+        from core.descriptors.extractor import extract, descriptor_to_list
+        descriptor = extract(geo, result, p)
         descriptor_list = descriptor_to_list(descriptor) if descriptor else None
 
         return {
@@ -143,6 +181,7 @@ class DiscoveryLoop:
             "simulation_result": result,
             "descriptor_vector": descriptor_list,
         }
+
     async def _step_evaluate(self, result: dict) -> dict:
         """Step 4: Extract constraint scores from simulation result."""
         from core.quantum.casimir import compute_energy_gap
