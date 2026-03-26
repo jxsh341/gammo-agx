@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gammo AGX — Exotic Spacetime Visualizer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap');
+
+:root {
+  --bg: #02050a;
+  --panel: rgba(4, 12, 24, 0.92);
+  --border: rgba(30, 100, 180, 0.18);
+  --accent: #1e6fb4;
+  --accent2: #6c3aed;
+  --accent3: #0ea87a;
+  --warn: #c87820;
+  --danger: #c83040;
+  --text: #b8d4f0;
+  --muted: #3a6080;
+  --mono: 'IBM Plex Mono', monospace;
+  --display: 'Syne', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  overflow: hidden;
+  width: 100vw; height: 100vh;
+  cursor: crosshair;
+}
+
+#canvas-container { position: absolute; inset: 0; z-index: 0; }
+canvas { display: block; }
+
+/* ── HEADER ── */
+.header {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  padding: 12px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(to bottom, rgba(2,5,10,0.98) 60%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+.logo { display: flex; align-items: baseline; gap: 12px; }
+.logo-name { font-family: var(--display); font-size: 20px; font-weight: 800; color: #fff; letter-spacing: 0.06em; }
+.logo-tag { font-size: 10px; color: var(--accent); letter-spacing: 0.2em; opacity: 0.8; }
+.header-center { display: flex; gap: 6px; }
+.geo-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+  padding: 5px 14px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+}
+.geo-btn:hover { border-color: var(--accent); color: var(--text); }
+.geo-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(30,111,180,0.1); }
+.geo-btn.active.alcubierre { border-color: var(--accent2); color: var(--accent2); background: rgba(108,58,237,0.1); }
+.geo-btn.active.krasnikov { border-color: var(--accent3); color: var(--accent3); background: rgba(14,168,122,0.1); }
+.geo-btn.active.schwarzschild { border-color: var(--warn); color: var(--warn); background: rgba(200,120,32,0.1); }
+.header-right { display: flex; align-items: center; gap: 14px; }
+.view-controls { display: flex; gap: 4px; }
+.view-btn {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em;
+  padding: 4px 10px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+}
+.view-btn:hover, .view-btn.active { border-color: rgba(255,255,255,0.3); color: var(--text); background: rgba(255,255,255,0.05); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent3); animation: pulse 2.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── PANELS ── */
+.panel {
+  position: absolute; z-index: 10;
+  background: var(--panel); border: 1px solid var(--border);
+  backdrop-filter: blur(16px); overflow: hidden;
+}
+.panel-head {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.02);
+}
+.panel-dot { width: 5px; height: 5px; }
+.panel-title { font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; }
+.panel-body { padding: 14px 16px; overflow-y: auto; }
+.panel-body::-webkit-scrollbar { width: 2px; }
+.panel-body::-webkit-scrollbar-thumb { background: rgba(30,111,180,0.3); }
+
+/* LEFT PANEL — PARAMS */
+.left-panel { left: 16px; top: 52px; bottom: 44px; width: 248px; display: flex; flex-direction: column; }
+.left-panel .panel-body { flex: 1; overflow-y: scroll; }
+
+/* RIGHT PANEL — PHYSICS */
+.right-panel { right: 272px; top: 52px; bottom: 44px; width: 232px; display: flex; flex-direction: column; }
+.right-panel .panel-body { flex: 1; overflow-y: auto; }
+
+/* BOTTOM PANEL — HEATMAP */
+.bottom-panel {
+  position: absolute; bottom: 44px; left: 280px; right: 530px; z-index: 10;
+  height: 110px; background: var(--panel); border: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+}
+.heatmap-inner { display: flex; align-items: stretch; height: 100%; }
+.heatmap-label-col { width: 100px; padding: 8px 12px; border-right: 1px solid var(--border); display: flex; flex-direction: column; justify-content: center; }
+.heatmap-title { font-size: 9px; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; }
+.heatmap-sub { font-size: 9px; color: var(--muted); line-height: 1.5; }
+.heatmap-canvas-wrap { flex: 1; padding: 8px 12px; display: flex; flex-direction: column; justify-content: space-between; }
+#heatmapCanvas { width: 100%; height: 60px; border: 1px solid var(--border); display: block; }
+.heatmap-axis { display: flex; justify-content: space-between; }
+.heatmap-tick { font-size: 8px; color: var(--muted); }
+
+/* PARAM GROUPS */
+.param-group { margin-bottom: 16px; }
+.param-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+.param-name { font-size: 9px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+.param-val { font-size: 12px; color: var(--accent); font-weight: 600; }
+.param-val.purple { color: var(--accent2); }
+.param-val.green { color: var(--accent3); }
+.param-val.orange { color: var(--warn); }
+.param-desc { font-size: 9px; color: rgba(58,96,128,0.7); margin-bottom: 6px; line-height: 1.4; }
+
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 1px;
+  background: rgba(30,111,180,0.2); outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  background: var(--bg); border: 1px solid var(--accent); cursor: pointer;
+  transition: border-color 0.15s;
+}
+input[type=range]::-webkit-slider-thumb:hover { border-color: var(--text); }
+.range-purple::-webkit-slider-thumb { border-color: var(--accent2); }
+.range-green::-webkit-slider-thumb { border-color: var(--accent3); }
+.range-orange::-webkit-slider-thumb { border-color: var(--warn); }
+.range-purple { background: rgba(108,58,237,0.2) !important; }
+.range-green { background: rgba(14,168,122,0.2) !important; }
+.range-orange { background: rgba(200,120,32,0.2) !important; }
+
+.section-divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+/* METRIC ROWS */
+.metric-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(30,100,180,0.07); }
+.metric-row:last-child { border-bottom: none; }
+.metric-key { font-size: 9px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; max-width: 120px; line-height: 1.4; }
+.metric-v { font-size: 11px; font-weight: 600; text-align: right; }
+.metric-v.blue { color: var(--accent); }
+.metric-v.green { color: var(--accent3); }
+.metric-v.orange { color: var(--warn); }
+.metric-v.red { color: var(--danger); }
+.metric-v.purple { color: var(--accent2); }
+
+/* STATUS BARS */
+.bar-wrap { margin: 4px 0 12px; }
+.bar-label { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.bar-name { font-size: 8px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+.bar-val { font-size: 9px; font-weight: 600; }
+.bar-track { height: 3px; background: rgba(255,255,255,0.06); position: relative; }
+.bar-fill { height: 100%; transition: width 0.3s ease, background 0.3s ease; }
+
+/* GEODESIC PANEL */
+.geodesic-status {
+  margin-top: 8px; padding: 8px 10px;
+  background: rgba(14,168,122,0.06); border: 1px solid rgba(14,168,122,0.15);
+  font-size: 9px; line-height: 1.6; color: var(--muted);
+}
+.geodesic-status span { color: var(--accent3); font-weight: 600; }
+
+/* BOTTOM BAR */
+.bottom-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+  padding: 8px 20px; height: 44px;
+  background: linear-gradient(to top, rgba(2,5,10,0.98) 60%, transparent);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.bottom-info { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; }
+.bottom-info span { color: var(--accent); margin: 0 3px; }
+.bottom-eq { font-size: 9px; color: rgba(58,96,128,0.5); font-style: italic; }
+
+/* TOOLTIP */
+.tooltip {
+  position: absolute; z-index: 30; padding: 6px 10px;
+  background: rgba(4,12,24,0.95); border: 1px solid var(--border);
+  font-size: 9px; color: var(--text); pointer-events: none;
+  opacity: 0; transition: opacity 0.2s;
+}
+
+/* SCANLINE */
+.scanline {
+  position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.015) 3px, rgba(0,0,0,0.015) 4px);
+}
+
+/* PARTICLE TRAIL */
+.particle-info {
+  position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
+  z-index: 15; font-size: 9px; color: var(--accent3); letter-spacing: 0.15em;
+  opacity: 0; transition: opacity 0.3s;
+}
+.particle-info.visible { opacity: 1; }
+
+.fade-in { animation: fi 0.8s ease forwards; opacity: 0; }
+@keyframes fi { to { opacity: 1; } }
+/* LIVE FEED PANEL */
+.live-panel { display: flex; flex-direction: column; overflow: hidden; }
+.live-panel .panel-head {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(14,168,122,0.04); flex-shrink: 0;
+}
+.live-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+.live-body::-webkit-scrollbar { width: 2px; }
+.live-body::-webkit-scrollbar-thumb { background: rgba(14,168,122,0.3); }
+.live-stat { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(14,168,122,0.07); }
+.live-stat:last-child { border-bottom: none; }
+.live-key { font-size: 9px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
+.live-val { font-size: 12px; font-weight: 600; }
+.live-val.green { color: var(--accent3); }
+.live-val.blue  { color: var(--accent); }
+.live-val.warn  { color: var(--warn); }
+.live-divider { height: 1px; background: var(--border); margin: 10px 0; }
+.hypothesis-box { background: rgba(14,168,122,0.05); border: 1px solid rgba(14,168,122,0.15); padding: 10px; margin-top: 4px; }
+.hypothesis-label { font-size: 8px; letter-spacing: 0.18em; color: var(--accent3); text-transform: uppercase; margin-bottom: 6px; }
+.hypothesis-text { font-size: 9px; color: var(--muted); line-height: 1.6; max-height: 90px; overflow-y: auto; }
+.hypothesis-text::-webkit-scrollbar { width: 2px; }
+.query-box { margin-top: 8px; }
+.query-input { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 9px; padding: 7px 10px; outline: none; letter-spacing: 0.05em; transition: border-color 0.2s; box-sizing: border-box; }
+.query-input:focus { border-color: var(--accent3); }
+.query-input::placeholder { color: var(--muted); }
+.query-btn { width: 100%; margin-top: 5px; padding: 7px; background: rgba(14,168,122,0.1); border: 1px solid rgba(14,168,122,0.3); color: var(--accent3); font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; cursor: pointer; text-transform: uppercase; transition: all 0.2s; }
+.query-btn:hover { background: rgba(14,168,122,0.2); }
+.query-result { margin-top: 8px; font-size: 9px; color: var(--muted); line-height: 1.6; max-height: 80px; overflow-y: auto; }
+.conn-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.conn-dot.connected { background: var(--accent3); }
+.conn-dot.disconnected { background: var(--danger); }
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+<div class="scanline"></div>
+
+<!-- HEADER -->
+<div class="header fade-in">
+  <div class="logo">
+    <div class="logo-name">GAMMO AGX</div>
+    <div class="logo-tag">EXOTIC SPACETIME FRAMEWORK</div>
+  </div>
+  <div class="header-center">
+    <button class="geo-btn active" data-geo="morris" onclick="switchGeo('morris',this)">Morris-Thorne</button>
+    <button class="geo-btn alcubierre" data-geo="alcubierre" onclick="switchGeo('alcubierre',this)">Alcubierre</button>
+    <button class="geo-btn krasnikov" data-geo="krasnikov" onclick="switchGeo('krasnikov',this)">Krasnikov</button>
+    <button class="geo-btn schwarzschild" data-geo="schwarzschild" onclick="switchGeo('schwarzschild',this)">Schwarzschild</button>
+  </div>
+  <div class="header-right">
+    <div class="view-controls">
+      <button class="view-btn active" id="btn-solid" onclick="setView('solid')">Solid</button>
+      <button class="view-btn" id="btn-wire" onclick="setView('wire')">Wire</button>
+      <button class="view-btn" id="btn-both" onclick="setView('both')">Both</button>
+      <button class="view-btn" id="btn-slice" onclick="toggleSlice()">Slice</button>
+      <button class="view-btn" id="btn-particle" onclick="toggleParticle()">Geodesic</button>
+    </div>
+    <div class="status-dot"></div>
+  </div>
+</div>
+
+<!-- LEFT PANEL -->
+<div class="panel left-panel fade-in" style="animation-delay:0.15s">
+  <div class="panel-head">
+    <div class="panel-dot" style="background:var(--accent)"></div>
+    <div class="panel-title" style="color:var(--accent)">Metric Parameters</div>
+  </div>
+  <div class="panel-body" id="param-body"></div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="panel right-panel fade-in" style="animation-delay:0.25s">
+  <div class="panel-head">
+    <div class="panel-dot" style="background:var(--accent2)"></div>
+    <div class="panel-title" style="color:var(--accent2)">Physics Analysis</div>
+  </div>
+  <div class="panel-body" id="physics-body"></div>
+</div>
+
+<!-- LIVE API FEED PANEL -->
+<div class="panel live-panel fade-in" style="animation-delay:0.3s; right:16px; width:240px;">
+  <div class="panel-head">
+    <div class="conn-dot disconnected" id="conn-dot"></div>
+    <div class="panel-title" style="color:var(--accent3)">Live System Feed</div>
+  </div>
+  <div class="live-body">
+    <div class="live-stat">
+      <div class="live-key">Total Records</div>
+      <div class="live-val green record-tick" id="live-total">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-key">Novel Discoveries</div>
+      <div class="live-val warn" id="live-novel">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-key">Loop Iteration</div>
+      <div class="live-val blue" id="live-iter">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-key">Loop Status</div>
+      <div class="live-val green" id="live-status">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-key">Last Stability</div>
+      <div class="live-val blue" id="live-stability">—</div>
+    </div>
+    <div class="live-stat">
+      <div class="live-key">Morris-Thorne</div>
+      <div class="live-val blue" id="live-mt">—</div>
+    </div>
+
+    <div class="live-divider"></div>
+
+    <div class="hypothesis-box">
+      <div class="hypothesis-label">Latest Hypothesis</div>
+      <div class="hypothesis-text" id="live-hypothesis">Waiting for system...</div>
+    </div>
+
+    <div class="live-divider"></div>
+
+    <div class="query-box">
+      <div class="hypothesis-label">Query Knowledge Store</div>
+      <input class="query-input" id="query-input" placeholder="find stable wormholes..." />
+      <button class="query-btn" onclick="runQuery()">Execute Query</button>
+      <div class="query-result" id="query-result"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM HEATMAP PANEL -->
+<div class="bottom-panel fade-in" style="animation-delay:0.35s">
+  <div class="heatmap-inner">
+    <div class="heatmap-label-col">
+      <div class="heatmap-title">Energy Condition</div>
+      <div class="heatmap-sub">Violation heatmap across radial domain</div>
+    </div>
+    <div class="heatmap-canvas-wrap">
+      <canvas id="heatmapCanvas"></canvas>
+      <div class="heatmap-axis">
+        <span class="heatmap-tick">r = b₀</span>
+        <span class="heatmap-tick">r = 2b₀</span>
+        <span class="heatmap-tick">r = 3b₀</span>
+        <span class="heatmap-tick">r = 4b₀</span>
+        <span class="heatmap-tick">r = 5b₀</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="particle-info" id="particle-info">GEODESIC ACTIVE — PARTICLE IN TRANSIT</div>
+
+<!-- BOTTOM BAR -->
+<div class="bottom-bar">
+  <div class="bottom-info">
+    GAMMO AGX v0.2<span>·</span>PHASE I<span>·</span><span id="geo-label">MORRIS-THORNE (1988)</span>
+  </div>
+  <div class="bottom-eq" id="metric-eq">ds² = -e²Φdt² + dl² + r²(l)(dθ² + sin²θ dφ²)</div>
+  <div class="bottom-info">DRAG ROTATE<span>·</span>SCROLL ZOOM</div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// THREE.JS SETUP
+// ════════════════════════════════════════════════
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x02050a, 1);
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.01, 500);
+camera.position.set(0, 4, 9);
+
+// Orbit
+let drag = false, prevM = {x:0,y:0};
+let sph = { theta: 0, phi: Math.PI/3, r: 9 };
+renderer.domElement.addEventListener('mousedown', e => { drag=true; prevM={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', () => drag=false);
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  sph.theta -= (e.clientX-prevM.x)*0.005;
+  sph.phi = Math.max(0.15, Math.min(Math.PI-0.15, sph.phi+(e.clientY-prevM.y)*0.005));
+  prevM = {x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('wheel', e => { sph.r = Math.max(3, Math.min(25, sph.r+e.deltaY*0.012)); });
+
+// Lights
+scene.add(new THREE.AmbientLight(0x001830, 1.5));
+const ptLight = new THREE.PointLight(0x1e6fb4, 2.5, 25); ptLight.position.set(0,0,0); scene.add(ptLight);
+const ptLight2 = new THREE.PointLight(0x6c3aed, 1.5, 18); ptLight2.position.set(4,5,-4); scene.add(ptLight2);
+
+// Grid
+const gridGeo = new THREE.BufferGeometry();
+const gp = []; const gs = 28, gd = 28;
+for (let i=0;i<=gd;i++){const p=-gs/2+i*(gs/gd); gp.push(p,-3.5,-gs/2,p,-3.5,gs/2); gp.push(-gs/2,-3.5,p,gs/2,-3.5,p);}
+gridGeo.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
+scene.add(new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({color:0x071828,transparent:true,opacity:0.6})));
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+let currentGeo = 'morris';
+let viewMode = 'solid';
+let sliceMode = false;
+let particleActive = false;
+let particleT = 0;
+let meshGroup = new THREE.Group();
+scene.add(meshGroup);
+
+let particleMesh = null;
+let particleTrail = [];
+let trailMesh = null;
+
+let params = {
+  morris:       { throat:1.0, exotic:0.5, tidal:0.3, redshift:0.2 },
+  alcubierre:   { warpSpeed:0.8, bubbleRadius:1.2, wallThickness:0.4, energy:0.6 },
+  krasnikov:    { tubeRadius:0.8, length:3.0, shellThickness:0.3, boost:0.5 },
+  schwarzschild:{ mass:1.2, spin:0.0, charge:0.0, observer:4.0 }
+};
+
+// ════════════════════════════════════════════════
+// PARAMETER DEFINITIONS
+// ════════════════════════════════════════════════
+const paramDefs = {
+  morris: [
+    { id:'throat', label:'Throat Radius b₀', min:0.3, max:3.0, step:0.01, desc:'Minimum wormhole radius in Planck lengths', cls:'' },
+    { id:'exotic',  label:'Exotic Matter Density', min:0.01, max:1.0, step:0.01, desc:'Negative energy density ρ at the throat', cls:'' },
+    { id:'tidal',   label:'Tidal Force', min:0.01, max:1.0, step:0.01, desc:'Gravitational tidal acceleration on traveller', cls:'' },
+    { id:'redshift',label:'Redshift Factor Φ', min:0.01, max:1.0, step:0.01, desc:'Gravitational time dilation at throat', cls:'' },
+  ],
+  alcubierre: [
+    { id:'warpSpeed',       label:'Warp Speed (v/c)', min:0.1, max:5.0, step:0.05, desc:'Effective velocity of the warp bubble', cls:'purple' },
+    { id:'bubbleRadius',    label:'Bubble Radius R', min:0.5, max:3.0, step:0.05, desc:'Radius of the spacetime distortion bubble', cls:'purple' },
+    { id:'wallThickness',   label:'Wall Thickness σ', min:0.1, max:1.0, step:0.01, desc:'Thickness of the bubble wall transition', cls:'purple' },
+    { id:'energy',          label:'Energy Density', min:0.01, max:1.0, step:0.01, desc:'Negative energy required to sustain bubble', cls:'purple' },
+  ],
+  krasnikov: [
+    { id:'tubeRadius',      label:'Tube Radius', min:0.3, max:2.0, step:0.05, desc:'Cross-sectional radius of the spacetime tube', cls:'green' },
+    { id:'length',          label:'Tube Length', min:1.0, max:6.0, step:0.1, desc:'Axial length of the modified spacetime region', cls:'green' },
+    { id:'shellThickness',  label:'Shell Thickness', min:0.1, max:0.8, step:0.01, desc:'Thickness of the causal boundary shell', cls:'green' },
+    { id:'boost',           label:'Causal Boost', min:0.1, max:1.0, step:0.01, desc:'Degree of causal structure modification', cls:'green' },
+  ],
+  schwarzschild: [
+    { id:'mass',      label:'Mass M (M☉)', min:0.3, max:4.0, step:0.05, desc:'Black hole mass in solar mass units', cls:'orange' },
+    { id:'spin',      label:'Spin Parameter a', min:0.0, max:0.99, step:0.01, desc:'Dimensionless spin (0 = Schwarzschild, 1 = extreme Kerr)', cls:'orange' },
+    { id:'charge',    label:'Charge Q', min:0.0, max:0.8, step:0.01, desc:'Electric charge parameter (Reissner-Nordström)', cls:'orange' },
+    { id:'observer',  label:'Observer Distance', min:2.5, max:10.0, step:0.1, desc:'Radial distance of observer in Schwarzschild radii', cls:'orange' },
+  ]
+};
+
+// ════════════════════════════════════════════════
+// GEOMETRY BUILDERS
+// ════════════════════════════════════════════════
+function morrisThorne(r, b0) { return r<=b0 ? 0 : Math.sqrt(r*r-b0*b0); }
+
+function buildMorris(p) {
+  const {throat:b0, exotic, tidal} = p;
+  const segs=80, phi=64, rMin=b0, rMax=b0+5;
+  const pos=[], col=[], idx=[];
+  function sheet(sign) {
+    for (let i=0;i<=segs;i++){
+      const r=rMin+(rMax-rMin)*(i/segs);
+      const z=sign*morrisThorne(r,b0)*0.88;
+      for (let j=0;j<=phi;j++){
+        const a=(j/phi)*Math.PI*2;
+        pos.push(r*Math.cos(a), z, r*Math.sin(a));
+        const t=(r-rMin)/(rMax-rMin);
+        const ev=exotic*(1-t)*0.8;
+        col.push(0.05+ev*0.3+t*0.08, 0.12+ev*0.1+(1-t)*0.1, 0.25+(1-t)*0.2);
+      }
+    }
+  }
+  sheet(1); sheet(-1);
+  const rw=phi+1, ss=(segs+1)*rw;
+  function addIdx(off){ for(let i=0;i<segs;i++) for(let j=0;j<phi;j++){const a=off+i*rw+j,b=off+(i+1)*rw+j,c=off+(i+1)*rw+(j+1),d=off+i*rw+(j+1); idx.push(a,b,d,b,c,d);} }
+  addIdx(0); addIdx(ss);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+
+function buildAlcubierre(p) {
+  const {warpSpeed:v, bubbleRadius:R, wallThickness:sigma} = p;
+  const segs=60, phiS=60;
+  const pos=[], col=[], idx=[];
+  // Shape function: f(r) = (tanh(sigma*(r+R)) - tanh(sigma*(r-R))) / (2*tanh(sigma*R))
+  function shapeF(r) {
+    return (Math.tanh(sigma*(r+R)) - Math.tanh(sigma*(r-R))) / (2*Math.tanh(sigma*R+0.001));
+  }
+  // Warp factor distortion: shows the spacetime compression/expansion
+  const zRange=6, rRange=5;
+  for (let i=0;i<=segs;i++){
+    const z=-zRange/2+zRange*(i/segs);
+    for (let j=0;j<=phiS;j++){
+      const rho=0.2+rRange*(j/phiS);
+      const f=shapeF(rho);
+      const warp=f*v*0.6;
+      // Radial distortion due to warp bubble
+      const rDistorted=rho+warp*Math.exp(-rho*0.3)*0.5;
+      const a=(j/phiS)*Math.PI*2; // Actually use as phi around tube axis
+      pos.push(rDistorted*Math.cos((i/segs)*Math.PI*2*0.3), z, rDistorted*Math.sin((i/segs)*Math.PI*2*0.3));
+      const intensity=Math.abs(f);
+      col.push(0.15+intensity*0.3, 0.05+intensity*0.1, 0.4+intensity*0.3);
+    }
+  }
+  // Build torus-like warp bubble shell
+  const pos2=[], col2=[], idx2=[];
+  const tSegs=80, pSegs=60;
+  for (let i=0;i<=tSegs;i++){
+    const theta=(i/tSegs)*Math.PI*2;
+    for (let j=0;j<=pSegs;j++){
+      const phi2=(j/pSegs)*Math.PI*2;
+      const r=R+0.12*Math.sin(phi2);
+      pos2.push(r*Math.cos(theta), 0.4*Math.sin(phi2), r*Math.sin(theta));
+      const f=shapeF(r);
+      const t=j/pSegs;
+      col2.push(0.1+f*0.4, 0.03+f*0.05, 0.35+f*0.4);
+    }
+  }
+  const rw2=pSegs+1;
+  for(let i=0;i<tSegs;i++) for(let j=0;j<pSegs;j++){
+    const a=i*rw2+j,b=(i+1)*rw2+j,c=(i+1)*rw2+(j+1),d=i*rw2+(j+1);
+    idx2.push(a,b,d,b,c,d);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos2,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col2,3));
+  g.setIndex(idx2); g.computeVertexNormals();
+  return g;
+}
+
+function buildKrasnikov(p) {
+  const {tubeRadius:R, length:L, shellThickness:sigma, boost} = p;
+  const segs=80, rSegs=40;
+  const pos=[], col=[], idx=[];
+  // Krasnikov tube: cylindrical region of modified spacetime
+  for (let i=0;i<=segs;i++){
+    const z=-L/2+L*(i/segs);
+    // Modified radial profile — tube with shell
+    for (let j=0;j<=rSegs;j++){
+      const phi2=(j/rSegs)*Math.PI*2;
+      // Shell at R with thickness sigma
+      const shellFactor=Math.exp(-Math.pow((1-Math.abs(Math.sin(phi2+z*0.3)))*R,2)/(sigma*sigma));
+      const r=R*(0.85+boost*0.15*shellFactor);
+      pos.push(r*Math.cos(phi2), z, r*Math.sin(phi2));
+      const t=i/segs;
+      const s=shellFactor;
+      col.push(0.04+s*0.15, 0.2+s*0.3+t*0.05, 0.15+s*0.2);
+    }
+  }
+  const rw=rSegs+1;
+  for(let i=0;i<segs;i++) for(let j=0;j<rSegs;j++){
+    const a=i*rw+j,b=(i+1)*rw+j,c=(i+1)*rw+(j+1),d=i*rw+(j+1);
+    idx.push(a,b,d,b,c,d);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+
+function buildSchwarzschild(p) {
+  const {mass:M, spin:a, observer:rObs} = p;
+  const rs=2*M; // Schwarzschild radius
+  const segs=70, phiS=70;
+  const pos=[], col=[], idx=[];
+  // Flamm's paraboloid: z = 2*sqrt(rs*(r-rs))
+  function flamm(r) { return r<rs ? 0 : 2*Math.sqrt(rs*(r-rs+0.001)); }
+  const rMin=rs*1.01, rMax=rs+6;
+  function sheet(sign) {
+    for(let i=0;i<=segs;i++){
+      const r=rMin+(rMax-rMin)*(i/segs);
+      const z=sign*flamm(r)*0.6;
+      for(let j=0;j<=phiS;j++){
+        const phi2=(j/phiS)*Math.PI*2;
+        pos.push(r*Math.cos(phi2), z, r*Math.sin(phi2));
+        const t=(r-rMin)/(rMax-rMin);
+        const grav=Math.exp(-t*3);
+        col.push(0.3+grav*0.4, 0.08+grav*0.05, 0.02+grav*0.02);
+      }
+    }
+  }
+  sheet(1); sheet(-1);
+  const rw=phiS+1, ss=(segs+1)*rw;
+  function addIdx(off){ for(let i=0;i<segs;i++) for(let j=0;j<phiS;j++){const a2=off+i*rw+j,b2=off+(i+1)*rw+j,c2=off+(i+1)*rw+(j+1),d2=off+i*rw+(j+1); idx.push(a2,b2,d2,b2,c2,d2);} }
+  addIdx(0); addIdx(ss);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+
+// ════════════════════════════════════════════════
+// SCENE REBUILD
+// ════════════════════════════════════════════════
+const solidMat = new THREE.MeshPhongMaterial({ vertexColors:true, side:THREE.DoubleSide, transparent:true, opacity:0.82, shininess:80 });
+const wireMat  = new THREE.MeshBasicMaterial({ vertexColors:true, wireframe:true, transparent:true, opacity:0.18 });
+
+function getAccentColor() {
+  const c = { morris:'#1e6fb4', alcubierre:'#6c3aed', krasnikov:'#0ea87a', schwarzschild:'#c87820' };
+  return c[currentGeo];
+}
+
+function buildThroatRing(b0, color) {
+  const g=new THREE.TorusGeometry(b0,0.025,16,100);
+  const m=new THREE.MeshBasicMaterial({color:new THREE.Color(color),transparent:true,opacity:0.5});
+  return new THREE.Mesh(g,m);
+}
+
+function buildEventHorizon(rs) {
+  const g=new THREE.SphereGeometry(rs,40,40);
+  const m=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.95,side:THREE.DoubleSide});
+  const eh=new THREE.Mesh(g,m);
+  // Glowing ring
+  const rg=new THREE.TorusGeometry(rs,0.04,16,100);
+  const rm=new THREE.MeshBasicMaterial({color:0xff6600,transparent:true,opacity:0.7});
+  const ring=new THREE.Mesh(rg,rm);
+  const grp=new THREE.Group(); grp.add(eh); grp.add(ring); return grp;
+}
+
+function rebuildScene() {
+  // Clear
+  while(meshGroup.children.length) meshGroup.remove(meshGroup.children[0]);
+  if(particleMesh){scene.remove(particleMesh);particleMesh=null;}
+  if(trailMesh){scene.remove(trailMesh);trailMesh=null;}
+
+  const p=params[currentGeo];
+  let geo;
+  if(currentGeo==='morris') geo=buildMorris(p);
+  else if(currentGeo==='alcubierre') geo=buildAlcubierre(p);
+  else if(currentGeo==='krasnikov') geo=buildKrasnikov(p);
+  else geo=buildSchwarzschild(p);
+
+  const solid=new THREE.Mesh(geo,solidMat.clone());
+  const wire=new THREE.Mesh(geo.clone(),wireMat.clone());
+
+  solid.visible = viewMode==='solid'||viewMode==='both';
+  wire.visible  = viewMode==='wire' ||viewMode==='both';
+
+  // Slice: only show half
+  if(sliceMode) {
+    solid.material.clippingPlanes=[new THREE.Plane(new THREE.Vector3(0,0,1),0)];
+    wire.material.clippingPlanes=[new THREE.Plane(new THREE.Vector3(0,0,1),0)];
+    renderer.localClippingEnabled=true;
+  } else {
+    solid.material.clippingPlanes=[];
+    wire.material.clippingPlanes=[];
+    renderer.localClippingEnabled=false;
+  }
+
+  meshGroup.add(solid);
+  meshGroup.add(wire);
+
+  // Decorations per geometry
+  if(currentGeo==='morris') {
+    const ring=buildThroatRing(p.throat,'#1e6fb4');
+    meshGroup.add(ring);
+  } else if(currentGeo==='schwarzschild') {
+    const rs=2*p.mass;
+    const eh=buildEventHorizon(rs);
+    meshGroup.add(eh);
+  }
+
+  updateParams();
+  updatePhysics();
+  updateHeatmap();
+}
+
+// ════════════════════════════════════════════════
+// PARAMETER UI
+// ════════════════════════════════════════════════
+function buildParamUI() {
+  const body=document.getElementById('param-body');
+  const defs=paramDefs[currentGeo];
+  const p=params[currentGeo];
+  const accent=getAccentColor();
+
+  body.innerHTML='';
+  defs.forEach(d => {
+    const g=document.createElement('div'); g.className='param-group';
+    g.innerHTML=`
+      <div class="param-row">
+        <div class="param-name">${d.label}</div>
+        <div class="param-val ${d.cls}" id="pv-${d.id}">${p[d.id].toFixed(2)}</div>
+      </div>
+      <div class="param-desc">${d.desc}</div>
+      <input type="range" class="range-${d.cls||'blue'}" id="pr-${d.id}"
+        min="${d.min}" max="${d.max}" step="${d.step}" value="${p[d.id]}">
+    `;
+    body.appendChild(g);
+
+    const div2=document.createElement('div'); div2.className='section-divider';
+    body.appendChild(div2);
+
+    const el=document.getElementById(`pr-${d.id}`);
+    el.addEventListener('input',()=>{
+      const v=parseFloat(el.value);
+      params[currentGeo][d.id]=v;
+      document.getElementById(`pv-${d.id}`).textContent=v.toFixed(2);
+      rebuildScene();
+    });
+  });
+}
+
+function updateParams() {
+  const defs=paramDefs[currentGeo];
+  const p=params[currentGeo];
+  defs.forEach(d=>{
+    const el=document.getElementById(`pv-${d.id}`);
+    if(el) el.textContent=p[d.id].toFixed(2);
+  });
+}
+
+// ════════════════════════════════════════════════
+// PHYSICS ANALYSIS UI
+// ════════════════════════════════════════════════
+function computePhysics() {
+  const p=params[currentGeo];
+  if(currentGeo==='morris') {
+    const {throat:b0,exotic:rho,tidal:tide,redshift:phi}=p;
+    const energyReq=-(rho*b0*b0)/(8*Math.PI);
+    const casimirGap=Math.max(1,Math.round(47-rho*20-(1/b0)*8));
+    const fordVal=rho*b0*b0*tide;
+    const fordOk=fordVal<0.3;
+    const stability=Math.max(0,Math.min(1,(1/(tide+0.1))*rho*0.5+(1-phi)*0.3));
+    const travTime=(b0*Math.PI/(1-tide*0.5));
+    const nullViolation=rho>0.3?'YES':'MARGINAL';
+    const constraintErr=(tide*rho*0.4).toFixed(4);
+    return { energyReq:energyReq.toExponential(3), casimirGap, fordOk, stability:stability.toFixed(3), travTime:travTime.toFixed(3), nullViolation, constraintErr, geoClass: b0<0.5?'MICRO':b0>2?'MACRO':rho>0.8?'EXOTIC+':'STANDARD' };
+  } else if(currentGeo==='alcubierre') {
+    const {warpSpeed:v,bubbleRadius:R,wallThickness:sigma,energy:E}=p;
+    const energyReq=(-v*v*R*R*sigma*sigma*E*1e2).toExponential(3);
+    const casimirGap=Math.max(1,Math.round(52-E*25-(v*2)));
+    const fordOk=E<0.4&&v<2;
+    const stability=Math.max(0,Math.min(1,1-v*0.15-E*0.3)).toFixed(3);
+    const travTime=(R/(v+0.01)).toFixed(3);
+    const nullViolation=v>1?'YES':'SUBLUMINAL';
+    const constraintErr=(v*E*0.3).toFixed(4);
+    return { energyReq, casimirGap, fordOk, stability, travTime, nullViolation, constraintErr, geoClass:v>2?'SUPERLUMINAL':v>1?'FTL':'SUBLUMINAL' };
+  } else if(currentGeo==='krasnikov') {
+    const {tubeRadius:R,length:L,shellThickness:s,boost:b}=p;
+    const energyReq=(-(b*R*L)/(8*Math.PI*s*s)).toExponential(3);
+    const casimirGap=Math.max(1,Math.round(40-b*18-(R/L)*5));
+    const fordOk=b<0.5;
+    const stability=Math.max(0,Math.min(1,(1-b*0.4)*(s/0.5)*0.6)).toFixed(3);
+    const travTime=(L/(1+b)).toFixed(3);
+    const nullViolation=b>0.4?'YES':'MARGINAL';
+    const constraintErr=(b*0.35).toFixed(4);
+    return { energyReq, casimirGap, fordOk, stability, travTime, nullViolation, constraintErr, geoClass:b>0.7?'BOOSTED':b>0.4?'ACTIVE':'PASSIVE' };
+  } else {
+    const {mass:M,spin:a,charge:Q,observer:rObs}=p;
+    const rs=2*M;
+    const energyReq=(M*M*1e2).toExponential(3);
+    const casimirGap=68;
+    const fordOk=false;
+    const stability=Math.max(0,Math.min(1,1-M*0.1)).toFixed(3);
+    const travTime=(2*Math.PI*Math.sqrt(Math.pow(rObs,3)/M)).toFixed(3);
+    const nullViolation='N/A';
+    const constraintErr=(M*0.02).toFixed(4);
+    const isco=a>0?M*(3+M-2*Math.sqrt(2*M)):6*M;
+    return { energyReq, casimirGap, fordOk, stability, travTime, nullViolation, constraintErr, geoClass:`rs=${rs.toFixed(2)}`, isco:isco.toFixed(3), rs:rs.toFixed(3) };
+  }
+}
+
+function updatePhysics() {
+  const ph=computePhysics();
+  const body=document.getElementById('physics-body');
+
+  // Casimir bar
+  const casimirPct=Math.max(2,100-ph.casimirGap*2);
+  const fordColor=ph.fordOk?'var(--accent3)':'var(--danger)';
+  const stabColor=ph.stability>0.6?'var(--accent3)':ph.stability>0.3?'var(--accent)':'var(--warn)';
+
+  let extra='';
+  if(currentGeo==='schwarzschild') {
+    extra=`
+      <div class="metric-row"><div class="metric-key">Schwarzschild Radius</div><div class="metric-v orange">${ph.rs} r_P</div></div>
+      <div class="metric-row"><div class="metric-key">ISCO Radius</div><div class="metric-v orange">${ph.isco} r_P</div></div>
+    `;
+  }
+
+  body.innerHTML=`
+    <div class="metric-row">
+      <div class="metric-key">Energy Requirement</div>
+      <div class="metric-v blue">${ph.energyReq} ρ_P</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-key">Casimir Gap</div>
+      <div class="metric-v ${ph.casimirGap>30?'orange':ph.casimirGap>15?'purple':'green'}">~${ph.casimirGap} OOM</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-key">Ford-Roman Bound</div>
+      <div class="metric-v ${ph.fordOk?'green':'red'}">${ph.fordOk?'SATISFIED':'VIOLATED'}</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-key">Null Energy Condition</div>
+      <div class="metric-v ${ph.nullViolation==='YES'?'red':ph.nullViolation==='N/A'?'orange':'orange'}">${ph.nullViolation}</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-key">Traversal Time</div>
+      <div class="metric-v blue">${ph.travTime} t_P</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-key">Constraint Error</div>
+      <div class="metric-v ${parseFloat(ph.constraintErr)<0.05?'green':'orange'}">${ph.constraintErr}</div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-key">Geometry Class</div>
+      <div class="metric-v blue">${ph.geoClass}</div>
+    </div>
+    ${extra}
+    <div class="section-divider" style="margin:10px 0"></div>
+
+    <div class="bar-wrap">
+      <div class="bar-label">
+        <div class="bar-name">Casimir Proximity</div>
+        <div class="bar-val" style="color:var(--accent)">${casimirPct.toFixed(0)}%</div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${casimirPct}%;background:var(--accent)"></div>
+      </div>
+    </div>
+
+    <div class="bar-wrap">
+      <div class="bar-label">
+        <div class="bar-name">Stability Index</div>
+        <div class="bar-val" style="color:${stabColor}">${ph.stability}</div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${parseFloat(ph.stability)*100}%;background:${stabColor}"></div>
+      </div>
+    </div>
+
+    <div class="bar-wrap">
+      <div class="bar-label">
+        <div class="bar-name">Ford-Roman Compliance</div>
+        <div class="bar-val" style="color:${fordColor}">${ph.fordOk?'OK':'FAIL'}</div>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${ph.fordOk?80:15}%;background:${fordColor}"></div>
+      </div>
+    </div>
+
+    <div class="geodesic-status" id="geo-status">
+      Geodesic: <span>INACTIVE</span> — Press <span>Geodesic</span> to trace particle path
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════
+// HEATMAP
+// ════════════════════════════════════════════════
+function updateHeatmap() {
+  const canvas=document.getElementById('heatmapCanvas');
+  if(!canvas) return;
+  const W=canvas.offsetWidth||400, H=60;
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const p=params[currentGeo];
+
+  ctx.clearRect(0,0,W,H);
+  const N=W;
+  for(let i=0;i<N;i++){
+    const t=i/N;
+    let violation=0;
+    if(currentGeo==='morris'){
+      const {throat:b0,exotic:rho,tidal:tide}=p;
+      const r=b0+t*4*b0;
+      const energyDensity=-rho*Math.exp(-t*2);
+      const tidalEffect=tide*Math.exp(-t*3);
+      violation=Math.abs(energyDensity)+tidalEffect*0.5;
+    } else if(currentGeo==='alcubierre'){
+      const {warpSpeed:v,bubbleRadius:R,wallThickness:sigma}=p;
+      const r=t*R*2;
+      const f=(Math.tanh(sigma*(r+R))-Math.tanh(sigma*(r-R)))/(2*Math.tanh(sigma*R+0.001));
+      violation=Math.abs(f)*v;
+    } else if(currentGeo==='krasnikov'){
+      const {boost:b,shellThickness:s}=p;
+      violation=b*(1-t)*Math.exp(-t/s);
+    } else {
+      const {mass:M}=p;
+      const rs=2*M;
+      const r=rs+t*6;
+      violation=rs/(r*r);
+    }
+
+    violation=Math.min(1,violation);
+    // Color: blue(ok) → cyan → yellow → red(violation)
+    let r2,g2,b2;
+    if(violation<0.33){ const f=violation/0.33; r2=Math.round(10+f*20);g2=Math.round(50+f*80);b2=Math.round(150+f*50); }
+    else if(violation<0.66){ const f=(violation-0.33)/0.33; r2=Math.round(30+f*200);g2=Math.round(130+f*50);b2=Math.round(200-f*150); }
+    else { const f=(violation-0.66)/0.34; r2=Math.round(230+f*25);g2=Math.round(180-f*120);b2=Math.round(50-f*40); }
+
+    ctx.fillStyle=`rgb(${r2},${g2},${b2})`;
+    ctx.fillRect(i,0,1,H);
+  }
+
+  // Overlay gradient for depth
+  const grad=ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'rgba(2,5,10,0.4)');
+  grad.addColorStop(0.5,'rgba(2,5,10,0)');
+  grad.addColorStop(1,'rgba(2,5,10,0.4)');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+}
+
+// ════════════════════════════════════════════════
+// GEODESIC PARTICLE
+// ════════════════════════════════════════════════
+function getGeodesicPath() {
+  const p=params[currentGeo];
+  const pts=[];
+  const N=200;
+  if(currentGeo==='morris'){
+    const b0=p.throat;
+    for(let i=0;i<N;i++){
+      const t=i/(N-1);
+      // Parametric path through wormhole: from one mouth, through throat, to other
+      const l=(t-0.5)*10;
+      const r=Math.sqrt(l*l+b0*b0);
+      const sign=l>=0?1:-1;
+      pts.push(new THREE.Vector3(r*Math.cos(t*0.8),sign*morrisThorne(r,b0)*0.88*Math.sign(l+0.001),r*Math.sin(t*0.8)));
+    }
+  } else if(currentGeo==='alcubierre'){
+    const R=p.bubbleRadius;
+    for(let i=0;i<N;i++){
+      const t=i/(N-1);
+      const z=-3+6*t;
+      const r=0.05;
+      pts.push(new THREE.Vector3(r*Math.cos(t*2),z,r*Math.sin(t*2)));
+    }
+  } else if(currentGeo==='krasnikov'){
+    const L=p.length, R=p.tubeRadius;
+    for(let i=0;i<N;i++){
+      const t=i/(N-1);
+      const z=-L/2+L*t;
+      const rp=R*0.3;
+      pts.push(new THREE.Vector3(rp*Math.cos(t*4),z,rp*Math.sin(t*4)));
+    }
+  } else {
+    const M=p.mass, rs=2*M, rObs=p.observer;
+    for(let i=0;i<N;i++){
+      const t=i/(N-1);
+      const theta=t*Math.PI*2;
+      const r=rs*1.5+(rObs-rs*1.5)*(1-Math.exp(-t*3));
+      pts.push(new THREE.Vector3(r*Math.cos(theta),0.3*Math.sin(theta*2),r*Math.sin(theta)));
+    }
+  }
+  return pts;
+}
+
+function spawnParticle() {
+  if(particleMesh){scene.remove(particleMesh);particleMesh=null;}
+  if(trailMesh){scene.remove(trailMesh);trailMesh=null;}
+  particleTrail=[];
+  particleT=0;
+
+  const geo=new THREE.SphereGeometry(0.08,10,10);
+  const col=currentGeo==='morris'?0x00d4ff:currentGeo==='alcubierre'?0xa855f7:currentGeo==='krasnikov'?0x10b981:0xff8c00;
+  const mat=new THREE.MeshBasicMaterial({color:col});
+  particleMesh=new THREE.Mesh(geo,mat);
+  scene.add(particleMesh);
+
+  document.getElementById('particle-info').classList.add('visible');
+  const s=document.getElementById('geo-status');
+  if(s) s.innerHTML='Geodesic: <span>ACTIVE</span> — Particle following null geodesic';
+}
+
+function updateParticle() {
+  if(!particleActive||!particleMesh) return;
+  const path=getGeodesicPath();
+  const idx=Math.floor(particleT*(path.length-1));
+  if(idx>=path.length-1){
+    particleT=0;
+    particleTrail=[];
+    if(trailMesh){scene.remove(trailMesh);trailMesh=null;}
+    return;
+  }
+  const pos=path[idx];
+  particleMesh.position.copy(pos);
+  particleTrail.push(pos.clone());
+  if(particleTrail.length>80) particleTrail.shift();
+
+  // Update trail
+  if(trailMesh){scene.remove(trailMesh);}
+  if(particleTrail.length>2){
+    const trailGeo=new THREE.BufferGeometry().setFromPoints(particleTrail);
+    const col=currentGeo==='morris'?0x005577:currentGeo==='alcubierre'?0x4a1090:currentGeo==='krasnikov'?0x065040:0x884400;
+    trailMesh=new THREE.Line(trailGeo,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.5}));
+    scene.add(trailMesh);
+  }
+
+  particleT+=0.003;
+}
+
+// ════════════════════════════════════════════════
+// CONTROLS
+// ════════════════════════════════════════════════
+function switchGeo(geo, btn) {
+  currentGeo=geo;
+  document.querySelectorAll('.geo-btn').forEach(b=>{b.classList.remove('active');});
+  btn.classList.add('active');
+  const labels={morris:'MORRIS-THORNE (1988)',alcubierre:'ALCUBIERRE (1994)',krasnikov:'KRASNIKOV (1995)',schwarzschild:'SCHWARZSCHILD (1916)'};
+  const eqs={
+    morris:'ds² = -e²Φdt² + dl² + r²(l)(dθ² + sin²θ dφ²)',
+    alcubierre:'ds² = -dt² + (dx - v_s f(r_s)dt)² + dy² + dz²',
+    krasnikov:'ds² = -(dt - k(t,x)dx)² + dx² + dy² + dz²',
+    schwarzschild:'ds² = -(1-rs/r)dt² + dr²/(1-rs/r) + r²dΩ²'
+  };
+  document.getElementById('geo-label').textContent=labels[geo];
+  document.getElementById('metric-eq').textContent=eqs[geo];
+  if(particleActive){particleActive=false;document.getElementById('btn-particle').classList.remove('active');document.getElementById('particle-info').classList.remove('visible');}
+  buildParamUI();
+  rebuildScene();
+}
+
+function setView(mode) {
+  viewMode=mode;
+  ['solid','wire','both'].forEach(m=>document.getElementById('btn-'+m).classList.toggle('active',m===mode));
+  rebuildScene();
+}
+
+function toggleSlice() {
+  sliceMode=!sliceMode;
+  document.getElementById('btn-slice').classList.toggle('active',sliceMode);
+  rebuildScene();
+}
+
+function toggleParticle() {
+  particleActive=!particleActive;
+  document.getElementById('btn-particle').classList.toggle('active',particleActive);
+  if(particleActive){ spawnParticle(); }
+  else {
+    if(particleMesh){scene.remove(particleMesh);particleMesh=null;}
+    if(trailMesh){scene.remove(trailMesh);trailMesh=null;}
+    document.getElementById('particle-info').classList.remove('visible');
+    const s=document.getElementById('geo-status');
+    if(s) s.innerHTML='Geodesic: <span>INACTIVE</span> — Press <span>Geodesic</span> to trace particle path';
+  }
+}
+
+// ════════════════════════════════════════════════
+// ANIMATE
+// ════════════════════════════════════════════════
+let t=0;
+function animate() {
+  requestAnimationFrame(animate);
+  t+=0.007;
+
+  camera.position.x=sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+  camera.position.y=sph.r*Math.cos(sph.phi);
+  camera.position.z=sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+  camera.lookAt(0,0,0);
+
+  // Gentle group rotation when not dragging
+  if(!drag) meshGroup.rotation.y+=0.001;
+
+  // Animate throat ring
+  meshGroup.children.forEach(c=>{
+    if(c.geometry&&c.geometry.type==='TorusGeometry'&&c.material&&!c.material.wireframe){
+      c.rotation.z=t*0.12;
+      c.material.opacity=0.4+0.15*Math.sin(t*1.5);
+    }
+  });
+
+  ptLight.intensity=2+0.4*Math.sin(t*0.9);
+  updateParticle();
+  renderer.render(scene,camera);
+}
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+buildParamUI();
+rebuildScene();
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+  updateHeatmap();
+});
+// ════════════════════════════════════════════════
+// LIVE API FEED
+// ════════════════════════════════════════════════
+const API = 'http://localhost:8000';
+let lastTotal = 0;
+
+function setConnected(ok) {
+  const dot = document.getElementById('conn-dot');
+  if (dot) {
+    dot.className = 'conn-dot ' + (ok ? 'connected' : 'disconnected');
+  }
+}
+
+async function pollLoopStatus() {
+  try {
+    const r = await fetch(`${API}/loop/status`);
+    if (!r.ok) throw new Error('API error');
+    const d = await r.json();
+    setConnected(true);
+
+    document.getElementById('live-iter').textContent = d.iteration ?? '—';
+    document.getElementById('live-status').textContent = d.running ? 'RUNNING' : 'STOPPED';
+    document.getElementById('live-stability').textContent =
+      d.last_stability ? d.last_stability.toFixed(3) : '—';
+
+    const hyp = d.last_hypothesis;
+    if (hyp) {
+      document.getElementById('live-hypothesis').textContent = hyp;
+    }
+  } catch(e) {
+    setConnected(false);
+    document.getElementById('live-status').textContent = 'OFFLINE';
+  }
+}
+
+async function pollStats() {
+  try {
+    const r = await fetch(`${API}/query/stats`);
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+
+    const total = d.total_records ?? 0;
+    const el = document.getElementById('live-total');
+    if (el) {
+      el.textContent = total.toLocaleString();
+      if (total !== lastTotal && lastTotal > 0) {
+        el.style.transform = 'scale(1.15)';
+        el.style.color = '#00ffaa';
+        setTimeout(() => {
+          el.style.transform = 'scale(1)';
+          el.style.color = 'var(--accent3)';
+        }, 400);
+      }
+      lastTotal = total;
+    }
+
+    const nov = document.getElementById('live-novel');
+    if (nov) nov.textContent = d.novel_discoveries ?? '—';
+
+    const mt = document.getElementById('live-mt');
+    if (mt) mt.textContent = (d.morris_thorne ?? 0).toLocaleString();
+
+  } catch(e) { /* silent */ }
+}
+
+async function runQuery() {
+  const input = document.getElementById('query-input');
+  const result = document.getElementById('query-result');
+  const btn = document.querySelector('.query-btn');
+  if (!input || !result) return;
+
+  const q = input.value.trim();
+  if (!q) return;
+
+  btn.textContent = 'QUERYING...';
+  result.textContent = '';
+
+  try {
+    const r = await fetch(`${API}/query/natural`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, limit: 3 })
+    });
+    const d = await r.json();
+    const count = d.count ?? 0;
+    const results = d.results ?? [];
+
+    if (count === 0) {
+      result.textContent = 'No results found.';
+    } else {
+      result.innerHTML = `<b style="color:var(--accent3)">${count} result(s):</b><br>` +
+        results.slice(0, 3).map(rec => {
+          const p = rec.parameters ?? {};
+          const stab = rec.stability_score?.toFixed(3) ?? '?';
+          const ford = rec.ford_roman_status ?? '?';
+          const sim = rec.similarity ? ` (sim=${rec.similarity.toFixed(2)})` : '';
+          return `b0=${p.throat_radius ?? '?'} stab=${stab} fr=${ford}${sim}`;
+        }).join('<br>');
+    }
+  } catch(e) {
+    result.textContent = 'API offline — start the server first.';
+  }
+
+  btn.textContent = 'EXECUTE QUERY';
+}
+
+// Allow Enter key to trigger query
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement?.id === 'query-input') {
+    runQuery();
+  }
+});
+
+// Start polling
+pollLoopStatus();
+pollStats();
+setInterval(pollLoopStatus, 5000);
+setInterval(pollStats, 10000);
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
 
     # AI Models
-    gemma_model_path: str = "models/gemma-3-4b-instruct-q4_k_m.gguf"
+    gemma_model_path: str = "models/google_gemma-3-4b-it-Q4_K_M.gguf"
     deepseek_model_path: str = "models/deepseek-r1-distill-qwen-7b-q4_k_m.gguf"
 
     # API

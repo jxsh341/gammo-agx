@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gammo AGX — Research Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap');
+
+:root {
+  --bg:      #030712;
+  --bg2:     #080f1a;
+  --surface: rgba(8,18,34,0.95);
+  --border:  rgba(56,189,248,0.12);
+  --border2: rgba(56,189,248,0.06);
+  --blue:    #38bdf8;
+  --blue2:   #0ea5e9;
+  --green:   #10b981;
+  --green2:  #34d399;
+  --purple:  #8b5cf6;
+  --red:     #ef4444;
+  --orange:  #f59e0b;
+  --text:    #cbd5e1;
+  --muted:   #475569;
+  --mono:    'Space Mono', monospace;
+  --sans:    'Outfit', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; height: 52px; flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: relative; z-index: 100;
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.logo { font-family: var(--sans); font-weight: 800; font-size: 18px; color: #fff; letter-spacing: 0.04em; }
+.logo span { color: var(--blue); }
+.build-tag { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.15em; border: 1px solid var(--border); padding: 3px 8px; }
+.header-center { display: flex; gap: 2px; }
+.tab {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+  padding: 6px 16px; border: none; background: transparent;
+  color: var(--muted); cursor: pointer; text-transform: uppercase;
+  border-bottom: 2px solid transparent; transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.sys-stat { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 9px; color: var(--muted); }
+.sys-stat .dot { width: 6px; height: 6px; border-radius: 50%; }
+.sys-stat .dot.live { background: var(--green); animation: pulse 2s infinite; }
+.sys-stat .dot.off { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── LAYOUT ── */
+.main { flex: 1; display: flex; overflow: hidden; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 260px; flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-section { padding: 16px; border-bottom: 1px solid var(--border2); }
+.sidebar-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-card { background: rgba(56,189,248,0.04); border: 1px solid var(--border2); padding: 10px 12px; }
+.stat-num { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--blue); line-height: 1; }
+.stat-num.green { color: var(--green); }
+.stat-num.orange { color: var(--orange); }
+.stat-num.purple { color: var(--purple); }
+.stat-label { font-size: 9px; color: var(--muted); margin-top: 4px; letter-spacing: 0.05em; }
+
+.loop-status { display: flex; flex-direction: column; gap: 8px; }
+.loop-row { display: flex; justify-content: space-between; align-items: center; }
+.loop-key { font-size: 10px; color: var(--muted); }
+.loop-val { font-family: var(--mono); font-size: 11px; color: var(--text); }
+.loop-val.green { color: var(--green); }
+.loop-val.blue { color: var(--blue); }
+
+.progress-bar { height: 3px; background: rgba(255,255,255,0.06); margin-top: 4px; }
+.progress-fill { height: 100%; background: var(--blue); transition: width 0.5s ease; }
+.progress-fill.green { background: var(--green); }
+
+/* ── CONTENT AREA ── */
+.content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+/* ── TAB PANELS ── */
+.tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+.tab-panel.active { display: flex; }
+
+/* ── MISSION CONTROL TAB ── */
+.mc-grid {
+  flex: 1; display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px; background: var(--border2);
+  overflow: hidden;
+}
+.mc-cell {
+  background: var(--bg2);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.cell-header {
+  padding: 10px 16px; border-bottom: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.cell-title { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; color: var(--blue); text-transform: uppercase; }
+.cell-badge { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+.cell-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
+.cell-body::-webkit-scrollbar { width: 2px; }
+.cell-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+/* LIVE FEED */
+.feed-item {
+  display: flex; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--border2);
+  animation: slideIn 0.3s ease;
+}
+@keyframes slideIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+.feed-item:last-child { border-bottom: none; }
+.feed-time { font-family: var(--mono); font-size: 8px; color: var(--muted); flex-shrink: 0; width: 55px; margin-top: 2px; }
+.feed-content { flex: 1; }
+.feed-geo { font-size: 9px; font-weight: 600; color: var(--blue); letter-spacing: 0.05em; }
+.feed-metrics { display: flex; gap: 8px; margin-top: 3px; flex-wrap: wrap; }
+.feed-metric { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+.feed-metric span { color: var(--text); }
+.feed-badge { font-family: var(--mono); font-size: 7px; padding: 2px 6px; border-radius: 0; margin-top: 4px; display: inline-block; }
+.feed-badge.novel { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); color: var(--orange); }
+.feed-badge.satisfied { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); color: var(--green); }
+.feed-badge.violated { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: var(--red); }
+.feed-badge.fallback { background: rgba(71,85,105,0.2); border: 1px solid var(--border); color: var(--muted); }
+
+/* HYPOTHESIS PANEL */
+.hyp-item { padding: 10px 0; border-bottom: 1px solid var(--border2); }
+.hyp-item:last-child { border-bottom: none; }
+.hyp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.hyp-conf { font-family: var(--mono); font-size: 10px; font-weight: 700; }
+.hyp-type { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+.hyp-model { font-family: var(--mono); font-size: 8px; padding: 2px 6px; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); color: var(--purple); }
+.hyp-text { font-size: 11px; color: var(--text); line-height: 1.6; }
+.conf-bar { height: 2px; background: rgba(255,255,255,0.06); margin-bottom: 6px; }
+.conf-fill { height: 100%; transition: width 0.5s; }
+
+/* NOVEL ALERTS */
+.alert-item {
+  padding: 12px; margin-bottom: 8px;
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-left: 3px solid var(--orange);
+  animation: alertIn 0.5s ease;
+}
+@keyframes alertIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+.alert-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.alert-title { font-family: var(--mono); font-size: 9px; color: var(--orange); letter-spacing: 0.1em; }
+.alert-time { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+.alert-metrics { display: flex; gap: 12px; margin-bottom: 6px; }
+.alert-metric { font-family: var(--mono); font-size: 9px; }
+.alert-metric .val { color: var(--orange); font-weight: 700; }
+.alert-hyp { font-size: 10px; color: var(--muted); line-height: 1.5; }
+
+/* STATS CHART */
+.chart-area { height: 120px; display: flex; align-items: flex-end; gap: 2px; padding: 8px 0; }
+.chart-bar { flex: 1; background: var(--blue); opacity: 0.4; transition: all 0.3s; border-radius: 1px 1px 0 0; }
+.chart-bar:hover { opacity: 1; }
+.chart-bar.novel { background: var(--orange); opacity: 0.7; }
+.chart-bar.satisfied { background: var(--green); opacity: 0.6; }
+
+/* ── KNOWLEDGE EXPLORER TAB ── */
+.explorer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.explorer-toolbar {
+  padding: 12px 20px; border-bottom: 1px solid var(--border2);
+  display: flex; gap: 10px; align-items: center; flex-shrink: 0;
+  background: var(--surface);
+}
+.search-box {
+  flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--mono); font-size: 11px;
+  padding: 8px 14px; outline: none; transition: border-color 0.2s;
+}
+.search-box:focus { border-color: var(--blue); }
+.search-box::placeholder { color: var(--muted); }
+.filter-btn {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em;
+  padding: 8px 14px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); cursor: pointer; text-transform: uppercase; transition: all 0.15s;
+}
+.filter-btn:hover, .filter-btn.active { border-color: var(--blue); color: var(--blue); background: rgba(56,189,248,0.05); }
+.filter-btn.green.active { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.05); }
+.filter-btn.orange.active { border-color: var(--orange); color: var(--orange); background: rgba(245,158,11,0.05); }
+.exec-btn {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em;
+  padding: 8px 18px; border: 1px solid var(--blue); background: rgba(56,189,248,0.1);
+  color: var(--blue); cursor: pointer; text-transform: uppercase; transition: all 0.15s;
+}
+.exec-btn:hover { background: rgba(56,189,248,0.2); }
+
+.table-wrap { flex: 1; overflow-y: auto; }
+.table-wrap::-webkit-scrollbar { width: 4px; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--border); }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em;
+  color: var(--muted); text-transform: uppercase; text-align: left;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  background: var(--surface); position: sticky; top: 0; z-index: 10;
+}
+tbody tr { border-bottom: 1px solid var(--border2); transition: background 0.1s; cursor: pointer; }
+tbody tr:hover { background: rgba(56,189,248,0.04); }
+tbody td { padding: 10px 16px; font-size: 11px; }
+tbody td.mono { font-family: var(--mono); font-size: 10px; }
+.badge { font-family: var(--mono); font-size: 8px; padding: 2px 8px; }
+.badge.sat { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: var(--green); }
+.badge.vio { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: var(--red); }
+.badge.nov { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); color: var(--orange); }
+.stab-bar { display: flex; align-items: center; gap: 6px; }
+.stab-track { width: 50px; height: 3px; background: rgba(255,255,255,0.06); }
+.stab-fill { height: 100%; }
+
+/* ── AI QUERY TAB ── */
+.query-tab { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.query-history { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+.query-history::-webkit-scrollbar { width: 3px; }
+.query-history::-webkit-scrollbar-thumb { background: var(--border); }
+.msg { display: flex; gap: 12px; }
+.msg.user { flex-direction: row-reverse; }
+.msg-avatar { width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 9px; font-weight: 700; }
+.msg-avatar.ai { background: rgba(56,189,248,0.1); border: 1px solid var(--border); color: var(--blue); }
+.msg-avatar.user { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); color: var(--purple); }
+.msg-bubble { max-width: 75%; }
+.msg-bubble.ai { background: rgba(8,18,34,0.8); border: 1px solid var(--border); padding: 12px 16px; }
+.msg-bubble.user { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); padding: 12px 16px; }
+.msg-text { font-size: 12px; line-height: 1.7; color: var(--text); }
+.msg-meta { font-family: var(--mono); font-size: 8px; color: var(--muted); margin-top: 6px; }
+.msg-results { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.result-card { background: rgba(56,189,248,0.04); border: 1px solid var(--border2); padding: 8px 12px; }
+.result-row { display: flex; gap: 16px; font-family: var(--mono); font-size: 9px; }
+.result-key { color: var(--muted); }
+.result-val { color: var(--text); }
+.typing { display: flex; gap: 4px; padding: 4px 0; }
+.typing-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); animation: typingBounce 1.2s infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+.query-input-area {
+  padding: 16px 24px; border-top: 1px solid var(--border2);
+  background: var(--surface); display: flex; gap: 10px; flex-shrink: 0;
+}
+.query-main {
+  flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--sans); font-size: 13px;
+  padding: 10px 16px; outline: none; transition: border-color 0.2s; resize: none;
+  height: 44px;
+}
+.query-main:focus { border-color: var(--blue); }
+.query-main::placeholder { color: var(--muted); }
+.send-btn {
+  padding: 10px 20px; background: rgba(56,189,248,0.15); border: 1px solid var(--blue);
+  color: var(--blue); font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+  cursor: pointer; text-transform: uppercase; transition: all 0.15s; flex-shrink: 0;
+}
+.send-btn:hover { background: rgba(56,189,248,0.25); }
+
+/* ── VISUALIZER TAB ── */
+#viz-container { flex: 1; position: relative; overflow: hidden; }
+#three-canvas { position: absolute; inset: 0; }
+
+/* ── THINKING INDICATOR ── */
+.thinking-bar {
+  height: 2px; background: transparent; overflow: hidden; flex-shrink: 0;
+}
+.thinking-fill {
+  height: 100%; width: 0%; background: linear-gradient(90deg, transparent, var(--blue), var(--green), transparent);
+  transition: width 0.3s; animation: none;
+}
+.thinking-fill.active {
+  animation: sweep 1.5s linear infinite;
+  width: 100%;
+}
+@keyframes sweep { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+
+/* ── NOVEL FLASH ── */
+.novel-flash {
+  position: fixed; top: 60px; right: 20px; z-index: 1000;
+  background: rgba(245,158,11,0.15); border: 1px solid var(--orange);
+  border-left: 3px solid var(--orange);
+  padding: 12px 18px; max-width: 320px;
+  animation: flashIn 0.4s ease;
+  display: none;
+}
+.novel-flash.show { display: block; }
+@keyframes flashIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+.flash-title { font-family: var(--mono); font-size: 9px; color: var(--orange); letter-spacing: 0.15em; margin-bottom: 4px; }
+.flash-text { font-size: 11px; color: var(--text); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- NOVEL DISCOVERY FLASH -->
+<div class="novel-flash" id="novel-flash">
+  <div class="flash-title">NOVEL DISCOVERY FLAGGED</div>
+  <div class="flash-text" id="flash-text"></div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">GAMMO <span>AGX</span></div>
+    <div class="build-tag">V0.2 · PHASE I</div>
+  </div>
+  <div class="header-center">
+    <button class="tab active" onclick="showTab('mission', this)">Mission Control</button>
+    <button class="tab" onclick="showTab('explorer', this)">Knowledge Explorer</button>
+    <button class="tab" onclick="showTab('query', this)">AI Query</button>
+    <button class="tab" onclick="showTab('viz', this)">3D Visualizer</button>
+  </div>
+  <div class="header-right">
+    <div class="sys-stat">
+      <div class="dot off" id="api-dot"></div>
+      <span id="api-label">CONNECTING...</span>
+    </div>
+    <div class="sys-stat">
+      <div class="dot live"></div>
+      <span id="rec-count" style="color:var(--green);font-weight:700">—</span>
+      <span>RECORDS</span>
+    </div>
+  </div>
+</div>
+
+<!-- THINKING BAR -->
+<div class="thinking-bar"><div class="thinking-fill" id="thinking-fill"></div></div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">System Metrics</div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-num green" id="s-total">—</div>
+          <div class="stat-label">Total Records</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num orange" id="s-novel">—</div>
+          <div class="stat-label">Novel Discoveries</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num blue" id="s-iter">—</div>
+          <div class="stat-label">Loop Iteration</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num purple" id="s-filtered">—</div>
+          <div class="stat-label">Filtered</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Loop State</div>
+      <div class="loop-status">
+        <div class="loop-row">
+          <div class="loop-key">Status</div>
+          <div class="loop-val green" id="l-status">—</div>
+        </div>
+        <div class="loop-row">
+          <div class="loop-key">Geometry</div>
+          <div class="loop-val blue" id="l-geo">—</div>
+        </div>
+        <div class="loop-row">
+          <div class="loop-key">Last Stability</div>
+          <div class="loop-val" id="l-stab">—</div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill green" id="stab-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="flex:1; overflow-y:auto;">
+      <div class="sidebar-label">Latest Hypothesis</div>
+      <div style="font-size:10px; color:var(--muted); line-height:1.7; font-style:italic;" id="l-hyp">
+        Waiting for discovery loop...
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- MISSION CONTROL TAB -->
+    <div class="tab-panel active" id="tab-mission">
+      <div class="mc-grid">
+
+        <!-- LIVE FEED -->
+        <div class="mc-cell">
+          <div class="cell-header">
+            <div class="cell-title">Live Simulation Feed</div>
+            <div class="cell-badge" id="feed-count">0 events</div>
+          </div>
+          <div class="cell-body" id="live-feed">
+            <div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">
+              Waiting for simulations...
+            </div>
+          </div>
+        </div>
+
+        <!-- HYPOTHESIS STREAM -->
+        <div class="mc-cell">
+          <div class="cell-header">
+            <div class="cell-title">Hypothesis Stream</div>
+            <div class="cell-badge" id="hyp-count">0 hypotheses</div>
+          </div>
+          <div class="cell-body" id="hyp-stream">
+            <div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">
+              Waiting for AI hypotheses...
+            </div>
+          </div>
+        </div>
+
+        <!-- NOVEL DISCOVERIES -->
+        <div class="mc-cell">
+          <div class="cell-header">
+            <div class="cell-title">Novel Discoveries</div>
+            <div class="cell-badge" id="nov-count" style="color:var(--orange)">0 flagged</div>
+          </div>
+          <div class="cell-body" id="novel-feed">
+            <div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">
+              No novel discoveries yet...
+            </div>
+          </div>
+        </div>
+
+        <!-- STATS -->
+        <div class="mc-cell">
+          <div class="cell-header">
+            <div class="cell-title">Distribution Analysis</div>
+            <div class="cell-badge">last 50 simulations</div>
+          </div>
+          <div class="cell-body">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:8px;">STABILITY DISTRIBUTION</div>
+            <div class="chart-area" id="stab-chart"></div>
+            <div style="display:flex;gap:16px;margin-top:8px;">
+              <div style="font-family:var(--mono);font-size:9px;">
+                <span style="color:var(--green)">■</span> <span style="color:var(--muted)">Avg: </span>
+                <span id="avg-stab" style="color:var(--text)">—</span>
+              </div>
+              <div style="font-family:var(--mono);font-size:9px;">
+                <span style="color:var(--blue)">■</span> <span style="color:var(--muted)">FR Satisfied: </span>
+                <span id="fr-pct" style="color:var(--text)">—</span>
+              </div>
+              <div style="font-family:var(--mono);font-size:9px;">
+                <span style="color:var(--orange)">■</span> <span style="color:var(--muted)">Novel: </span>
+                <span id="nov-pct" style="color:var(--text)">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- KNOWLEDGE EXPLORER TAB -->
+    <div class="tab-panel" id="tab-explorer">
+      <div class="explorer">
+        <div class="explorer-toolbar">
+          <input class="search-box" id="exp-search" placeholder="Search simulations... e.g. stable wormholes ford-roman satisfied" />
+          <button class="filter-btn green" id="f-stable" onclick="toggleFilter('stable')">Stable</button>
+          <button class="filter-btn orange" id="f-novel" onclick="toggleFilter('novel')">Novel</button>
+          <button class="filter-btn green" id="f-fr" onclick="toggleFilter('fr')">Ford-Roman OK</button>
+          <button class="exec-btn" onclick="runExplorer()">Search</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Geometry</th>
+                <th>Throat b₀</th>
+                <th>Exotic ρ</th>
+                <th>Stability</th>
+                <th>Ford-Roman</th>
+                <th>Energy Req</th>
+                <th>Casimir Gap</th>
+                <th>Novel</th>
+                <th>Model</th>
+              </tr>
+            </thead>
+            <tbody id="exp-table">
+              <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:30px;font-size:11px;">Run a search to explore the knowledge store</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI QUERY TAB -->
+    <div class="tab-panel" id="tab-query">
+      <div class="query-tab">
+        <div class="query-history" id="query-history">
+          <div class="msg">
+            <div class="msg-avatar ai">AI</div>
+            <div class="msg-bubble ai">
+              <div class="msg-text">
+                I am the Gammo AGX research AI. I have access to your full simulation knowledge store.
+                Ask me anything about the exotic spacetime configurations the system has discovered,
+                request specific analyses, or query for configurations matching criteria.
+              </div>
+              <div class="msg-meta">GEMMA 3 4B · GAMMO AGX v0.2</div>
+            </div>
+          </div>
+        </div>
+        <div class="query-input-area">
+          <textarea class="query-main" id="q-input" placeholder="Ask the research AI anything... e.g. Which configurations have the lowest energy requirement?" rows="1"></textarea>
+          <button class="send-btn" onclick="sendQuery()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3D VISUALIZER TAB -->
+    <div class="tab-panel" id="tab-viz">
+      <div id="viz-container">
+        <canvas id="three-canvas"></canvas>
+        <div style="position:absolute;top:16px;left:16px;font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:0.15em;">MORRIS-THORNE WORMHOLE · INTERACTIVE</div>
+        <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9px;color:var(--muted);">DRAG TO ROTATE · SCROLL TO ZOOM</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════
+const API = 'http://localhost:8000';
+let feedItems = [];
+let hypItems  = [];
+let novelItems = [];
+let stabHistory = [];
+let lastNovelCount = 0;
+let activeFilters = new Set();
+let isQuerying = false;
+
+// ════════════════════════════════════════════════
+// TAB SYSTEM
+// ════════════════════════════════════════════════
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'viz') initViz();
+  if (name === 'explorer') runExplorer();
+}
+
+// ════════════════════════════════════════════════
+// API POLLING
+// ════════════════════════════════════════════════
+async function pollLoop() {
+  try {
+    const r = await fetch(`${API}/loop/status`);
+    const d = await r.json();
+
+    document.getElementById('api-dot').className = 'dot live';
+    document.getElementById('api-label').textContent = 'API LIVE';
+    document.getElementById('api-label').style.color = 'var(--green)';
+
+    document.getElementById('s-iter').textContent    = d.iteration ?? '—';
+    document.getElementById('s-novel').textContent   = d.novel_discoveries ?? '—';
+    document.getElementById('s-filtered').textContent = d.filtered_count ?? '—';
+    document.getElementById('l-status').textContent  = d.running ? 'RUNNING' : 'STOPPED';
+    document.getElementById('l-geo').textContent     = (d.current_geometry ?? '').replace('_', '-').toUpperCase();
+
+    const stab = d.last_stability ?? 0;
+    document.getElementById('l-stab').textContent = stab.toFixed(3);
+    document.getElementById('stab-bar').style.width = (stab * 100) + '%';
+
+    if (d.last_hypothesis && d.last_hypothesis.length > 10) {
+      document.getElementById('l-hyp').textContent = d.last_hypothesis;
+    }
+
+    // Check for novel discoveries
+    if ((d.novel_discoveries ?? 0) > lastNovelCount) {
+      lastNovelCount = d.novel_discoveries;
+      showNovelFlash();
+    }
+
+  } catch(e) {
+    document.getElementById('api-dot').className = 'dot off';
+    document.getElementById('api-label').textContent = 'API OFFLINE';
+    document.getElementById('api-label').style.color = 'var(--red)';
+  }
+}
+
+async function pollStats() {
+  try {
+    const r = await fetch(`${API}/query/stats`);
+    const d = await r.json();
+    const total = d.total_records ?? 0;
+    document.getElementById('s-total').textContent = total.toLocaleString();
+    document.getElementById('rec-count').textContent = total.toLocaleString();
+  } catch(e) {}
+}
+
+async function pollFeed() {
+  try {
+    const r = await fetch(`${API}/loop/feed`);
+    const d = await r.json();
+    const sims = d.recent_simulations ?? [];
+    if (!sims.length) return;
+
+    // Update live feed
+    const newItems = sims.slice(0, 8);
+    stabHistory = newItems.map(s => s.stability_score ?? 0);
+    renderFeed(newItems);
+    renderHypotheses(newItems);
+    renderNovels(newItems);
+    renderChart();
+    updateStats(newItems);
+
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════
+// RENDER FUNCTIONS
+// ════════════════════════════════════════════════
+function fmt(v, d=3) { return v != null ? Number(v).toFixed(d) : '—'; }
+function fmtE(v) { return v != null ? Number(v).toExponential(2) : '—'; }
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  return Math.floor(diff/3600) + 'h ago';
+}
+
+function renderFeed(items) {
+  const el = document.getElementById('live-feed');
+  document.getElementById('feed-count').textContent = items.length + ' events';
+  el.innerHTML = items.map(s => {
+    const p = s.parameters ?? {};
+    const fr = s.ford_roman_status ?? 'unknown';
+    const isNovel = s.novelty_flag;
+    return `<div class="feed-item">
+      <div class="feed-time">${timeAgo(s.created_at)}</div>
+      <div class="feed-content">
+        <div class="feed-geo">MORRIS-THORNE${isNovel ? ' ★' : ''}</div>
+        <div class="feed-metrics">
+          <div class="feed-metric">b₀=<span>${fmt(p.throat_radius,2)}</span></div>
+          <div class="feed-metric">ρ=<span>${fmt(p.exotic_density,2)}</span></div>
+          <div class="feed-metric">stab=<span>${fmt(s.stability_score,3)}</span></div>
+          <div class="feed-metric">gap=<span>${fmt(s.casimir_gap_oom,1)} OOM</span></div>
+        </div>
+        <div>
+          <span class="feed-badge ${fr === 'satisfied' ? 'satisfied' : 'violated'}">${fr.toUpperCase()}</span>
+          ${isNovel ? '<span class="feed-badge novel">NOVEL</span>' : ''}
+          ${s.model_used === 'fallback' ? '<span class="feed-badge fallback">FALLBACK</span>' : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderHypotheses(items) {
+  const el = document.getElementById('hyp-stream');
+  const hyps = items.filter(s => s.hypothesis && s.hypothesis.length > 20 && s.model_used !== 'fallback');
+  document.getElementById('hyp-count').textContent = hyps.length + ' hypotheses';
+  if (!hyps.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">No AI hypotheses yet...</div>'; return; }
+  el.innerHTML = hyps.slice(0,5).map(s => {
+    const conf = s.hypothesis_confidence ?? 0.4;
+    const confPct = Math.round(conf * 100);
+    const confColor = conf > 0.7 ? 'var(--green)' : conf > 0.5 ? 'var(--blue)' : 'var(--orange)';
+    const model = s.model_used ?? 'unknown';
+    return `<div class="hyp-item">
+      <div class="hyp-header">
+        <div class="hyp-conf" style="color:${confColor}">${confPct}%</div>
+        <div class="hyp-type">${s.uncertainty_type ?? ''}</div>
+        <div class="hyp-model">${model}</div>
+      </div>
+      <div class="conf-bar"><div class="conf-fill" style="width:${confPct}%;background:${confColor}"></div></div>
+      <div class="hyp-text">${s.hypothesis.slice(0, 280)}${s.hypothesis.length > 280 ? '...' : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderNovels(items) {
+  const el = document.getElementById('novel-feed');
+  const novels = items.filter(s => s.novelty_flag);
+  document.getElementById('nov-count').textContent = novels.length + ' flagged';
+  if (!novels.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:20px 0;text-align:center;">No novel discoveries in recent feed...</div>'; return; }
+  el.innerHTML = novels.map(s => {
+    const p = s.parameters ?? {};
+    return `<div class="alert-item">
+      <div class="alert-header">
+        <div class="alert-title">★ NOVEL CONFIGURATION FLAGGED</div>
+        <div class="alert-time">${timeAgo(s.created_at)}</div>
+      </div>
+      <div class="alert-metrics">
+        <div class="alert-metric">CONF <span class="val">${fmt(s.hypothesis_confidence, 2)}</span></div>
+        <div class="alert-metric">STAB <span class="val">${fmt(s.stability_score, 3)}</span></div>
+        <div class="alert-metric">FR <span class="val">${(s.ford_roman_status ?? '?').toUpperCase()}</span></div>
+        <div class="alert-metric">b₀ <span class="val">${fmt(p.throat_radius, 2)}</span></div>
+      </div>
+      ${s.hypothesis ? `<div class="alert-hyp">${s.hypothesis.slice(0,200)}...</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderChart() {
+  const el = document.getElementById('stab-chart');
+  if (!stabHistory.length) return;
+  const max = Math.max(...stabHistory, 0.01);
+  el.innerHTML = stabHistory.map(v => {
+    const h = Math.max(4, Math.round((v / max) * 100));
+    const cls = v > 0.7 ? 'satisfied' : v > 0.4 ? '' : 'novel';
+    return `<div class="chart-bar ${cls}" style="height:${h}%" title="stability=${v.toFixed(3)}"></div>`;
+  }).join('');
+}
+
+function updateStats(items) {
+  if (!items.length) return;
+  const avg = items.reduce((a,b) => a + (b.stability_score ?? 0), 0) / items.length;
+  const frOk = items.filter(s => s.ford_roman_status === 'satisfied').length;
+  const nov = items.filter(s => s.novelty_flag).length;
+  document.getElementById('avg-stab').textContent = avg.toFixed(3);
+  document.getElementById('fr-pct').textContent = Math.round(frOk/items.length*100) + '%';
+  document.getElementById('nov-pct').textContent = Math.round(nov/items.length*100) + '%';
+}
+
+// ════════════════════════════════════════════════
+// NOVEL FLASH
+// ════════════════════════════════════════════════
+function showNovelFlash() {
+  const el = document.getElementById('novel-flash');
+  const txt = document.getElementById('flash-text');
+  const hyp = document.getElementById('l-hyp').textContent;
+  txt.textContent = hyp.slice(0, 120) + '...';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 6000);
+}
+
+// ════════════════════════════════════════════════
+// KNOWLEDGE EXPLORER
+// ════════════════════════════════════════════════
+function toggleFilter(f) {
+  const btn = document.getElementById('f-' + f);
+  if (activeFilters.has(f)) { activeFilters.delete(f); btn.classList.remove('active'); }
+  else { activeFilters.add(f); btn.classList.add('active'); }
+}
+
+async function runExplorer() {
+  const query = document.getElementById('exp-search').value.trim();
+  const tbody = document.getElementById('exp-table');
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px;font-size:11px;">Loading...</td></tr>';
+
+  try {
+    let data;
+    if (activeFilters.has('stable') && !query) {
+      const r = await fetch(`${API}/query/stable?limit=50`);
+      data = (await r.json()).results ?? [];
+    } else if (activeFilters.has('fr')) {
+      const r = await fetch(`${API}/query/ford-roman?limit=50`);
+      data = (await r.json()).results ?? [];
+    } else if (query) {
+      const r = await fetch(`${API}/query/natural`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({query, limit: 50})
+      });
+      data = (await r.json()).results ?? [];
+    } else {
+      const r = await fetch(`${API}/query/structured`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({limit: 50, novelty_only: activeFilters.has('novel')})
+      });
+      data = (await r.json()).results ?? [];
+    }
+
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:30px;font-size:11px;">No results found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.map(s => {
+      const p = s.parameters ?? {};
+      const stab = s.stability_score ?? 0;
+      const fr = s.ford_roman_status ?? '?';
+      const stabColor = stab > 0.7 ? 'var(--green)' : stab > 0.4 ? 'var(--blue)' : 'var(--orange)';
+      return `<tr onclick="showRecord('${s.id}')">
+        <td class="mono" style="color:var(--blue)">MT</td>
+        <td class="mono">${fmt(p.throat_radius,3)}</td>
+        <td class="mono">${fmt(p.exotic_density,3)}</td>
+        <td>
+          <div class="stab-bar">
+            <div class="stab-track"><div class="stab-fill" style="width:${stab*100}%;background:${stabColor}"></div></div>
+            <span class="mono" style="font-size:10px;color:${stabColor}">${fmt(stab,3)}</span>
+          </div>
+        </td>
+        <td><span class="badge ${fr==='satisfied'?'sat':'vio'}">${fr.toUpperCase()}</span></td>
+        <td class="mono" style="font-size:9px;color:var(--muted)">${fmtE(s.energy_requirement)}</td>
+        <td class="mono" style="font-size:9px;color:var(--muted)">${fmt(s.casimir_gap_oom,1)} OOM</td>
+        <td>${s.novelty_flag ? '<span class="badge nov">YES</span>' : '<span style="color:var(--muted);font-size:9px;font-family:var(--mono)">—</span>'}</td>
+        <td class="mono" style="font-size:9px;color:var(--purple)">${s.model_used ?? '—'}</td>
+      </tr>`;
+    }).join('');
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--red);padding:20px;font-size:11px;">API offline</td></tr>';
+  }
+}
+
+document.getElementById('exp-search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runExplorer();
+});
+
+function showRecord(id) {
+  // Switch to query tab and ask about this record
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-query').classList.add('active');
+  document.querySelectorAll('.tab')[2].classList.add('active');
+  document.getElementById('q-input').value = `Tell me about simulation record ${id.slice(0,8)}`;
+  sendQuery();
+}
+
+// ════════════════════════════════════════════════
+// AI QUERY
+// ════════════════════════════════════════════════
+async function sendQuery() {
+  if (isQuerying) return;
+  const input = document.getElementById('q-input');
+  const history = document.getElementById('query-history');
+  const q = input.value.trim();
+  if (!q) return;
+
+  input.value = '';
+  isQuerying = true;
+
+  // Show user message
+  history.innerHTML += `<div class="msg user">
+    <div class="msg-avatar user">YOU</div>
+    <div class="msg-bubble user"><div class="msg-text">${q}</div></div>
+  </div>`;
+
+  // Show typing indicator
+  const typingId = 'typing-' + Date.now();
+  history.innerHTML += `<div class="msg" id="${typingId}">
+    <div class="msg-avatar ai">AI</div>
+    <div class="msg-bubble ai">
+      <div class="typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>
+    </div>
+  </div>`;
+  history.scrollTop = history.scrollHeight;
+
+  // Activate thinking bar
+  document.getElementById('thinking-fill').classList.add('active');
+
+  try {
+    const r = await fetch(`${API}/query/natural`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({query: q, limit: 5})
+    });
+    const d = await r.json();
+    const results = d.results ?? [];
+    const count = d.count ?? 0;
+
+    // Remove typing indicator
+    document.getElementById(typingId)?.remove();
+    document.getElementById('thinking-fill').classList.remove('active');
+
+    // Build response
+    let responseHTML = '';
+    if (count === 0) {
+      responseHTML = `<div class="msg-text">No matching configurations found in the knowledge store for that query. Try a different search term or check that the discovery loop has been running.</div>`;
+    } else {
+      responseHTML = `<div class="msg-text">Found <strong style="color:var(--blue)">${count} configuration${count>1?'s':''}</strong> matching your query. Here are the top results:</div>
+      <div class="msg-results">
+        ${results.slice(0,3).map(s => {
+          const p = s.parameters ?? {};
+          const conf = s.hypothesis_confidence;
+          return `<div class="result-card">
+            <div class="result-row">
+              <div class="result-key">b₀</div><div class="result-val">${fmt(p.throat_radius,3)}</div>
+              <div class="result-key" style="margin-left:12px">ρ</div><div class="result-val">${fmt(p.exotic_density,3)}</div>
+              <div class="result-key" style="margin-left:12px">stability</div><div class="result-val" style="color:var(--green)">${fmt(s.stability_score,3)}</div>
+            </div>
+            <div class="result-row" style="margin-top:4px">
+              <div class="result-key">ford-roman</div><div class="result-val" style="color:${s.ford_roman_status==='satisfied'?'var(--green)':'var(--red)'}">${(s.ford_roman_status??'?').toUpperCase()}</div>
+              <div class="result-key" style="margin-left:12px">energy</div><div class="result-val">${fmtE(s.energy_requirement)}</div>
+              ${s.similarity != null ? `<div class="result-key" style="margin-left:12px">similarity</div><div class="result-val" style="color:var(--blue)">${fmt(s.similarity,3)}</div>` : ''}
+            </div>
+            ${s.hypothesis && s.hypothesis.length > 20 && s.model_used !== 'fallback' ?
+              `<div style="margin-top:6px;font-size:10px;color:var(--muted);line-height:1.6;font-style:italic">"${s.hypothesis.slice(0,200)}..."</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    history.innerHTML += `<div class="msg">
+      <div class="msg-avatar ai">AI</div>
+      <div class="msg-bubble ai">
+        ${responseHTML}
+        <div class="msg-meta">GAMMO AGX SEARCH · ${count} RESULT${count!==1?'S':''}</div>
+      </div>
+    </div>`;
+
+  } catch(e) {
+    document.getElementById(typingId)?.remove();
+    document.getElementById('thinking-fill').classList.remove('active');
+    history.innerHTML += `<div class="msg">
+      <div class="msg-avatar ai">AI</div>
+      <div class="msg-bubble ai"><div class="msg-text" style="color:var(--red)">API offline. Start the server with: python scripts/run_api.py</div></div>
+    </div>`;
+  }
+
+  isQuerying = false;
+  history.scrollTop = history.scrollHeight;
+}
+
+document.getElementById('q-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+});
+
+// ════════════════════════════════════════════════
+// 3D VISUALIZER (lazy init)
+// ════════════════════════════════════════════════
+let vizInited = false;
+function initViz() {
+  if (vizInited) return;
+  vizInited = true;
+
+  const canvas = document.getElementById('three-canvas');
+  const container = document.getElementById('viz-container');
+  const W = container.clientWidth, H = container.clientHeight;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(W, H);
+  renderer.setClearColor(0x030712, 1);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(52, W/H, 0.01, 500);
+  camera.position.set(0, 3, 9);
+
+  scene.add(new THREE.AmbientLight(0x001830, 2));
+  const pt = new THREE.PointLight(0x38bdf8, 3, 25); pt.position.set(0,0,0); scene.add(pt);
+
+  // Grid
+  const gGeo = new THREE.BufferGeometry();
+  const gp = []; for(let i=0;i<=28;i++){const p=-14+i; gp.push(p,-3.5,-14,p,-3.5,14,-14,-3.5,p,14,-3.5,p);}
+  gGeo.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
+  scene.add(new THREE.LineSegments(gGeo,new THREE.LineBasicMaterial({color:0x071828,transparent:true,opacity:0.6})));
+
+  // Wormhole
+  const b0 = 1.0;
+  const pos=[],col=[],idx=[];
+  const segs=80,phiS=64,rMin=b0,rMax=b0*5;
+  function sheet(sign){
+    for(let i=0;i<=segs;i++){
+      const r=rMin+(rMax-rMin)*(i/segs);
+      const z=sign*Math.sqrt(Math.max(r*r-b0*b0,0))*0.88;
+      for(let j=0;j<=phiS;j++){
+        const a=(j/phiS)*Math.PI*2;
+        pos.push(r*Math.cos(a),z,r*Math.sin(a));
+        const t=(r-rMin)/(rMax-rMin);
+        col.push(0.05+t*0.08,0.12+(1-t)*0.1,0.25+(1-t)*0.2);
+      }
+    }
+  }
+  sheet(1);sheet(-1);
+  const rw=phiS+1,ss=(segs+1)*rw;
+  function addIdx(off){for(let i=0;i<segs;i++)for(let j=0;j<phiS;j++){const a=off+i*rw+j,b=off+(i+1)*rw+j,c=off+(i+1)*rw+(j+1),d=off+i*rw+(j+1);idx.push(a,b,d,b,c,d);}}
+  addIdx(0);addIdx(ss);
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.setIndex(idx);geo.computeVertexNormals();
+  const mesh=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:0.85,shininess:60}));
+  scene.add(mesh);
+
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(b0,0.025,16,100),new THREE.MeshBasicMaterial({color:0x38bdf8,transparent:true,opacity:0.5}));
+  scene.add(ring);
+
+  let drag=false,prev={x:0,y:0},sph={theta:0,phi:Math.PI/3,r:9};
+  canvas.addEventListener('mousedown',e=>{drag=true;prev={x:e.clientX,y:e.clientY};});
+  window.addEventListener('mouseup',()=>drag=false);
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return;
+    sph.theta-=(e.clientX-prev.x)*0.005;
+    sph.phi=Math.max(0.15,Math.min(Math.PI-0.15,sph.phi+(e.clientY-prev.y)*0.005));
+    prev={x:e.clientX,y:e.clientY};
+  });
+  canvas.addEventListener('wheel',e=>{sph.r=Math.max(3,Math.min(20,sph.r+e.deltaY*0.01));});
+
+  let t=0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t+=0.007;
+    camera.position.x=sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+    camera.position.y=sph.r*Math.cos(sph.phi);
+    camera.position.z=sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+    camera.lookAt(0,0,0);
+    mesh.rotation.y+=0.001;
+    ring.rotation.z=t*0.12;
+    pt.intensity=2+0.4*Math.sin(t*0.9);
+    renderer.render(scene,camera);
+  }
+  animate();
+}
+
+// ════════════════════════════════════════════════
+// START POLLING
+// ════════════════════════════════════════════════
+pollLoop();
+pollStats();
+pollFeed();
+setInterval(pollLoop, 5000);
+setInterval(pollStats, 10000);
+setInterval(pollFeed, 8000);
+</script>
+</body>
+</html>
