@@ -364,6 +364,99 @@ def extract_morris_thorne(
     )
 
 
+def extract_alcubierre(
+    simulation_result: dict,
+    params: dict,
+) -> DescriptorVector:
+    """Extract descriptor vector from an Alcubierre simulation result."""
+    metrics = simulation_result.get("metrics", {})
+
+    v_s   = params.get("warp_speed",     1.0)
+    R     = params.get("bubble_radius",  1.0)
+    sigma = params.get("wall_thickness", 0.5)
+    rho0  = params.get("energy_density", 0.5)
+
+    vector = [0.0] * DESCRIPTOR_DIM
+
+    # CURVATURE DIMS (0-15) — warp bubble geometry
+    vector[0]  = safe_normalize(v_s, scale=5.0)
+    vector[1]  = safe_normalize(R, scale=3.0)
+    vector[2]  = safe_normalize(sigma, scale=1.0)
+    vector[3]  = float(metrics.get("f_at_center", 1.0))
+    vector[4]  = float(metrics.get("f_at_bubble_wall", 0.5))
+    vector[5]  = float(metrics.get("f_at_2R", 0.0))
+    vector[6]  = safe_normalize(v_s * R, scale=10.0)
+    vector[7]  = safe_normalize(sigma * R, scale=3.0)
+    vector[8]  = 1.0 if v_s > 1.0 else 0.0  # superluminal flag
+    vector[9]  = safe_normalize(v_s**2, scale=25.0)
+    vector[10] = safe_normalize(R**3, scale=27.0)
+    vector[11] = safe_normalize(sigma**2 * R, scale=3.0)
+    vector[12] = safe_normalize(v_s / max(R, 0.1), scale=10.0)
+    vector[13] = safe_normalize(metrics.get("traversal_time", 0), scale=1e44)
+    vector[14] = {"SUBLUMINAL":0.0,"WARP-1":0.33,"WARP-2":0.67,"EXTREME":1.0}.get(
+        metrics.get("geometry_class","WARP-1"), 0.33)
+    vector[15] = safe_normalize(R / max(v_s, 0.1), scale=3.0)
+
+    # ENERGY DIMS (16-31)
+    energy_req = metrics.get("energy_requirement", 0.0)
+    vector[16] = safe_normalize(safe_log(rho0), scale=2.0)
+    vector[17] = safe_normalize(safe_log(abs(energy_req)), scale=5.0)
+    vector[18] = float(metrics.get("nec_fraction", 1.0))
+    vector[19] = 1.0  # NEC always fully violated
+    vector[20] = safe_normalize(v_s**2 * R**3, scale=50.0)
+    vector[21] = safe_normalize(metrics.get("casimir_gap_oom", 47.0), scale=50.0)
+    vector[22] = safe_normalize(safe_log(abs(energy_req) + 1e-30), scale=5.0)
+    vector[23] = safe_normalize(v_s**2 * sigma, scale=10.0)
+    for i in range(24, 32):
+        vector[i] = safe_normalize(rho0 * (i - 23) * 0.1, scale=1.0)
+
+    # STABILITY DIMS (32-47)
+    stab = metrics.get("stability_score", 0.0)
+    vector[32] = stab
+    vector[33] = 1.0 if metrics.get("bssn_stable", True) else 0.0
+    vector[34] = safe_normalize(metrics.get("constraint_error", 0.0), scale=1.0)
+    vector[35] = safe_normalize(v_s, scale=5.0)
+    vector[36] = safe_normalize(sigma, scale=1.0)
+    vector[37] = safe_normalize(R, scale=3.0)
+    vector[38] = safe_normalize(1.0 / max(v_s, 0.1), scale=10.0)
+    vector[39] = 1.0 - min(v_s / 5.0, 1.0)
+    vector[40] = 1.0
+    vector[41] = safe_normalize(stab * (1 - metrics.get("constraint_error", 0)), scale=1.0)
+    vector[42] = safe_normalize(stab * sigma, scale=1.0)
+    vector[43] = safe_normalize(abs(stab - 0.5), scale=0.5)
+    vector[44] = safe_normalize(stab / max(v_s, 0.1), scale=1.0)
+    vector[45] = safe_normalize(metrics.get("constraint_error", 0) * v_s, scale=5.0)
+    vector[46] = safe_normalize(stab * (1 - metrics.get("constraint_error", 0)), scale=1.0)
+    vector[47] = 1.0 if stab > 0.6 else 0.0
+
+    # QUANTUM DIMS (48-63)
+    ford = metrics.get("ford_roman_status", "violated")
+    fr_factor = metrics.get("ford_roman_factor", 1.0)
+    vector[48] = 1.0 if ford == "satisfied" else 0.0
+    vector[49] = safe_normalize(safe_log(max(fr_factor, 1e-10)), scale=3.0)
+    vector[50] = 1.0  # NEC always violated
+    vector[51] = 1.0  # WEC always violated
+    vector[52] = safe_normalize(-fr_factor, scale=10.0)
+    vector[53] = max(0.0, 1.0 - metrics.get("casimir_gap_oom", 47.0) / 50.0)
+    vector[54] = safe_normalize(fr_factor / max(stab, 0.01), scale=10.0)
+    vector[55] = safe_normalize(stab * (1.0 - min(fr_factor / 10.0, 1.0)), scale=1.0)
+    for i in range(56, 64):
+        vector[i] = safe_normalize(v_s * rho0 * (i - 55) * 0.1, scale=2.0)
+
+    vector = [float(max(-2.0, min(2.0, v))) for v in vector]
+    norm = math.sqrt(sum(v**2 for v in vector))
+
+    return DescriptorVector(
+        vector=vector,
+        geometry_type="alcubierre",
+        norm=norm,
+        curvature_summary={"warp_speed": v_s, "bubble_radius": R, "wall_thickness": sigma},
+        energy_summary={"energy_requirement": energy_req, "nec_fraction": 1.0},
+        stability_summary={"stability_score": stab},
+        quantum_summary={"ford_roman_status": ford, "fr_factor": fr_factor},
+    )
+
+
 def extract(
     geometry_type:     str,
     simulation_result: dict,
@@ -384,12 +477,15 @@ def extract(
     try:
         if geometry_type == "morris_thorne":
             return extract_morris_thorne(simulation_result, params)
+        elif geometry_type == "alcubierre":
+            return extract_alcubierre(simulation_result, params)
         else:
             logger.warning(f"No descriptor extractor for geometry: {geometry_type}")
             return None
     except Exception as e:
         logger.error(f"Descriptor extraction failed for {geometry_type}: {e}")
         return None
+    
 
 
 def descriptor_to_list(descriptor: DescriptorVector) -> list:
