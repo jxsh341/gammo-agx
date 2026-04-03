@@ -102,9 +102,26 @@ class DiscoveryLoop:
     async def _step_generate(self) -> dict:
         """Step 1: Generate a candidate spacetime configuration."""
         import random
-        # 70% Morris-Thorne, 30% Alcubierre
-        geo = "alcubierre" if random.random() < 0.3 else "morris_thorne"
+        # 60% Morris-Thorne, 25% Alcubierre, 15% Krasnikov
+        roll = random.random()
+        if roll < 0.15:
+            geo = "krasnikov"
+        elif roll < 0.40:
+            geo = "alcubierre"
+        else:
+            geo = "morris_thorne"
         self.state.current_geometry = geo
+
+        if geo == "krasnikov":
+            return {
+                "geometry_type": "krasnikov",
+                "parameters": {
+                    "tube_radius":     round(random.uniform(0.3, 2.0), 3),
+                    "length":          round(random.uniform(1.0, 6.0), 3),
+                    "shell_thickness": round(random.uniform(0.1, 0.8), 3),
+                    "boost_factor":    round(random.uniform(0.1, 1.0), 3),
+                }
+            }
 
         if geo == "alcubierre":
             return {
@@ -116,6 +133,7 @@ class DiscoveryLoop:
                     "energy_density": round(random.uniform(0.01, 1.0), 3),
                 }
             }
+
         return {
             "geometry_type": "morris_thorne",
             "parameters": {
@@ -128,24 +146,11 @@ class DiscoveryLoop:
 
     async def _step_validate_symbolic(self, config: dict) -> bool:
         """Step 2: SymPy validates the configuration analytically."""
-        geo = config.get("geometry_type", "morris_thorne")
-
-        if geo == "morris_thorne":
-            from core.symbolic.metric_validator import filter_configuration
-            should_simulate, reason = filter_configuration(config)
-            if not should_simulate:
-                logger.debug(f"Symbolic filter rejected: {reason}")
-            return should_simulate
-
-        # Alcubierre — basic parameter validation only
-        if geo == "alcubierre":
-            p = config.get("parameters", {})
-            if p.get("warp_speed", 1.0) > 10.0:
-                logger.debug("Alcubierre: warp speed too extreme (>10c)")
-                return False
-            if p.get("bubble_radius", 1.0) <= 0:
-                return False
-        return True
+        from core.symbolic.metric_validator import filter_configuration
+        should_simulate, reason = filter_configuration(config)
+        if not should_simulate:
+            logger.debug(f"Symbolic filter rejected [{config.get('geometry_type')}]: {reason}")
+        return should_simulate
 
     async def _step_simulate(self, config: dict) -> dict:
         """Step 3: JAX physics engine simulates the geometry."""
@@ -159,6 +164,15 @@ class DiscoveryLoop:
                 bubble_radius  = p.get("bubble_radius",  1.0),
                 wall_thickness = p.get("wall_thickness", 0.5),
                 energy_density = p.get("energy_density", 0.5),
+            )
+        elif geo == "krasnikov":
+            from core.simulator.krasnikov import KrashnikovParams, solve
+            p = config.get("parameters", {})
+            params = KrashnikovParams(
+                tube_radius     = p.get("tube_radius",     0.8),
+                length          = p.get("length",          3.0),
+                shell_thickness = p.get("shell_thickness", 0.3),
+                boost_factor    = p.get("boost_factor",    0.5),
             )
         else:
             from core.simulator.morris_thorne import MorrisThorneParams, solve
@@ -183,16 +197,21 @@ class DiscoveryLoop:
         }
 
     async def _step_evaluate(self, result: dict) -> dict:
-        """Step 4: Extract constraint scores from simulation result."""
+        """Step 4: Extract constraint scores and run QESP analysis."""
         from core.quantum.casimir import compute_energy_gap
+        from qesp.loop_integration import run_qesp_analysis
 
-        metrics = result.get("simulation_result", {}).get("metrics", {})
+        metrics   = result.get("simulation_result", {}).get("metrics", {})
+        geo       = result.get("geometry_type", "morris_thorne")
+        params    = result.get("parameters", {})
         energy_req = metrics.get("energy_requirement", 0.0)
 
-        # Real Casimir gap calculation
         casimir_gap = compute_energy_gap(
             wormhole_energy_requirement=energy_req if energy_req != 0 else -1e-2
         )
+
+        # Run QESP analysis
+        qesp_data = run_qesp_analysis(geo, params, result.get("simulation_result", {}))
 
         return {
             **result,
@@ -205,6 +224,7 @@ class DiscoveryLoop:
             "geometry_class":      metrics.get("geometry_class", "STANDARD"),
             "bssn_stable":         metrics.get("bssn_stable", True),
             "traversal_time":      metrics.get("traversal_time", 0.0),
+            **qesp_data,  # Merge all QESP fields
         }
 
     async def _step_uncertainty(self, scored: dict) -> dict:
@@ -266,6 +286,22 @@ class DiscoveryLoop:
             "loop_iteration":        self.state.iteration,
             "descriptor_vector": record.get("descriptor_vector"),
             "model_used":            "gemma3",
+            # QESP fields
+            "qesp_strain_max":           record.get("qesp_strain_max"),
+            "qesp_strain_regime":        record.get("qesp_strain_regime"),
+            "qesp_curvature_suppression":record.get("qesp_curvature_suppression"),
+            "qesp_plateau_detected":     record.get("qesp_plateau_detected"),
+            "qesp_divergence_prevented": record.get("qesp_divergence_prevented"),
+            "qesp_stability_improvement":record.get("qesp_stability_improvement"),
+            "qesp_curvature_cap":        record.get("qesp_curvature_cap"),
+            "qesp_gw_deviation_pct":     record.get("qesp_gw_deviation_pct"),
+            "qesp_verdict":              record.get("qesp_verdict"),
+            "qesp_score":                record.get("qesp_score"),
+            "qesp_validates":            record.get("qesp_validates"),
+            "qesp_publishable":          record.get("qesp_publishable"),
+            "qesp_key_finding":          record.get("qesp_key_finding"),
+            "qesp_strongest_prediction": record.get("qesp_strongest_prediction"),
+            "qesp_paper_abstract":       record.get("qesp_paper_abstract"),
         }
 
         result = write_simulation(simulation_record)

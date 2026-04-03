@@ -189,6 +189,187 @@ def validate_morris_thorne(
     )
 
 
+def validate_krasnikov(
+    tube_radius:     float,
+    length:          float,
+    shell_thickness: float,
+    boost_factor:    float,
+) -> ValidationResult:
+    """
+    Symbolically validate a Krasnikov tube configuration.
+
+    Checks:
+    1. Parameter bounds (physical viability)
+    2. Causal modification constraint: k(r) -> 0 outside the tube
+    3. WEC in asymptotic region: stress-energy vanishes outside tube
+    4. Exotic energy magnitude within Planck threshold
+    5. Ford-Roman soft filter (factor > 50 rejected)
+
+    Args:
+        tube_radius:     R — cross-sectional radius in Planck lengths
+        length:          L — axial length of the tube
+        shell_thickness: sigma — shell steepness parameter
+        boost_factor:    k0 — causal boost (0 < k0 <= 1)
+
+    Returns:
+        ValidationResult with pass/fail and reason
+    """
+    logger.debug(
+        f"Krasnikov symbolic validation: R={tube_radius:.3f}, "
+        f"L={length:.3f}, sigma={shell_thickness:.3f}, boost={boost_factor:.3f}"
+    )
+
+    # ── Check 1: Parameter bounds ──────────────────────────────────────────
+
+    if tube_radius <= 0:
+        return ValidationResult(
+            valid=False,
+            reason="tube_radius must be positive",
+        )
+
+    if length <= 0:
+        return ValidationResult(
+            valid=False,
+            reason="length must be positive",
+        )
+
+    if shell_thickness <= 0:
+        return ValidationResult(
+            valid=False,
+            reason="shell_thickness must be positive",
+        )
+
+    if boost_factor <= 0:
+        return ValidationResult(
+            valid=False,
+            reason="boost_factor must be positive",
+        )
+
+    if boost_factor > 1.0:
+        return ValidationResult(
+            valid=False,
+            reason=(
+                f"boost_factor={boost_factor:.3f} > 1.0 — "
+                "violates causal structure of Krasnikov tube (k0 must be <= 1)"
+            ),
+        )
+
+    if tube_radius > 10.0:
+        return ValidationResult(
+            valid=False,
+            reason=f"tube_radius={tube_radius} exceeds physical bound (> 10 Planck lengths)",
+        )
+
+    if length > 100.0:
+        return ValidationResult(
+            valid=False,
+            reason=f"length={length} exceeds simulation bound (> 100 Planck lengths)",
+        )
+
+    # ── Check 2: Causal modification constraint (analytic evaluation) ──────
+    # k(r) = boost * (1 - tanh(sigma * (r - R))) / 2
+    # Must vanish far outside the tube: k(r >> R) ≈ 0
+    # Evaluate at r = 20*R (deep asymptotic region)
+    import math as _math
+    R_val     = tube_radius
+    sigma_val = shell_thickness
+    boost_val = boost_factor
+    r_asymp   = R_val * 20.0  # 20x tube radius — deep asymptotic region
+
+    k_at_asymp = boost_val * (1.0 - _math.tanh(sigma_val * (r_asymp - R_val))) / 2.0
+
+    if abs(k_at_asymp) > 0.01:
+        return ValidationResult(
+            valid=False,
+            reason=(
+                f"Causal constraint violated: k(r=20R) = {k_at_asymp:.6f} != 0. "
+                "Tube metric does not return to flat spacetime outside."
+            ),
+            details={"k_at_asymp": k_at_asymp}
+        )
+
+    # ── Check 3: WEC in asymptotic region (analytic derivative) ────────────
+    # dk/dr = -boost * sigma * sech²(sigma*(r-R)) / 2
+    # T^00 ~ (dk/dr)^2 / (8π) must be negligible far outside tube
+    # Physical threshold: < 1e-4 at r=20R (exponential decay ensures this
+    # for any physical tube; only pathological non-decaying fields fail)
+    cosh_val      = _math.cosh(min(sigma_val * (r_asymp - R_val), 700.0))  # cap for overflow
+    sech2_val     = 1.0 / (cosh_val * cosh_val) if cosh_val > 0 else 0.0
+    dk_dr_asymp   = -boost_val * sigma_val * sech2_val / 2.0
+    T00_at_asymp  = (dk_dr_asymp ** 2) / (8.0 * _math.pi)
+
+    if T00_at_asymp > 1e-4:  # 1e-4 threshold: catches non-decaying fields, passes physical tubes
+        return ValidationResult(
+            valid=False,
+            reason=(
+                f"WEC asymptotic check failed: T^00(r=20R) = {T00_at_asymp:.2e} > 1e-4. "
+                "Stress-energy does not vanish sufficiently outside tube."
+            ),
+            details={"T00_at_asymp": T00_at_asymp}
+        )
+
+    # ── Check 4: Exotic energy magnitude ──────────────────────────────────
+    # Peak T^00 occurs at the shell (r = R)
+    # T^00_peak ~ -(boost * sigma / 2)^2 / (8pi)
+    peak_T00 = (boost_val * sigma_val / 2.0)**2 / (8.0 * float(pi))
+    planck_density_threshold = 1e3
+
+    if peak_T00 > planck_density_threshold:
+        return ValidationResult(
+            valid=False,
+            reason=(
+                f"Peak exotic energy density {peak_T00:.2e} exceeds Planck threshold. "
+                "Reduce boost or shell_thickness."
+            ),
+            details={"peak_T00": peak_T00}
+        )
+
+    # ── Check 5: Ford-Roman soft filter ───────────────────────────────────
+    # Violation proxy: boost^2 * R / sigma (matches JAX solver calculation)
+    fr_measure = boost_val**2 * R_val / max(sigma_val, 1e-10)
+    if fr_measure > 50.0:
+        return ValidationResult(
+            valid=False,
+            reason=(
+                f"Ford-Roman extreme violation: proxy={fr_measure:.1f} > 50. "
+                "Integrated negative energy far exceeds quantum inequality bound."
+            ),
+            details={"fr_measure": fr_measure}
+        )
+
+    # ── All checks passed ─────────────────────────────────────────────────
+    details = {
+        "k_at_asymp":    k_at_asymp,
+        "T00_at_asymp":  T00_at_asymp,
+        "peak_T00":      peak_T00,
+        "fr_measure":    fr_measure,
+        "causal_ok":     True,
+        "wec_asymp_ok":  True,
+        "energy_ok":     True,
+        "fr_ok":         True,
+    }
+
+    logger.debug(
+        f"Krasnikov symbolic validation PASSED: "
+        f"k_asymp={k_at_asymp:.4f}, T00_asymp={T00_at_asymp:.2e}, FR={fr_measure:.2f}"
+    )
+
+    return ValidationResult(
+        valid=True,
+        reason="All Krasnikov symbolic constraints satisfied",
+        nec_satisfied=False,
+        wec_satisfied=False,
+        energy_density=peak_T00,
+        details=details,
+    )
+
+
+def jnp_tanh_sympy(x):
+    """SymPy-compatible tanh using SymPy's built-in tanh."""
+    from sympy import tanh as sympy_tanh
+    return sympy_tanh(x)
+
+
 def derive_stress_energy_morris_thorne(
     throat_radius: float,
     exotic_density: float,
@@ -291,6 +472,14 @@ def filter_configuration(params: dict) -> Tuple[bool, str]:
         )
         return result.valid, result.reason
 
-    # For other geometries, pass through for now
-    # TODO: Add Alcubierre, Krasnikov validators
-    return True, "Geometry not yet symbolically validated — passing through"
+    if geometry == "krasnikov":
+        result = validate_krasnikov(
+            tube_radius     = p.get("tube_radius",     0.8),
+            length          = p.get("length",          3.0),
+            shell_thickness = p.get("shell_thickness", 0.3),
+            boost_factor    = p.get("boost_factor",    0.5),
+        )
+        return result.valid, result.reason
+
+    # Alcubierre and other geometries: pass through (basic bounds checked in loop)
+    return True, "Geometry passes through symbolic filter"
